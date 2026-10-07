@@ -30,6 +30,48 @@ fi
 # Default server fallback
 DEFAULT_SERVER="${COMFYUI_SERVER:-127.0.0.1:8000}"
 
+ensure_comfyui() {
+    if $PYTHON_EXE -c "import urllib.request; urllib.request.urlopen('http://$DEFAULT_SERVER/system_stats', timeout=1.5)" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo ""
+    echo "[NOTICE] ComfyUI server is not responding at $DEFAULT_SERVER."
+
+    COMFY_CMD=""
+    if command -v comfyui >/dev/null 2>&1; then
+        COMFY_CMD="comfyui"
+    elif [ -f "$HOME/ComfyUI/main.py" ]; then
+        COMFY_CMD="$PYTHON_EXE $HOME/ComfyUI/main.py"
+    fi
+
+    if [ -z "$COMFY_CMD" ]; then
+        echo "[WARNING] ComfyUI server is offline. Please start ComfyUI or choose Option [2] for Zero-GPU Dry-Run."
+        return 1
+    fi
+
+    echo "[FOUND] Detected local ComfyUI: $COMFY_CMD"
+    read -r -p "Do you want to launch ComfyUI now? [Y/n, default Y]: " LAUNCH_CHOICE
+    if [ "$LAUNCH_CHOICE" = "n" ] || [ "$LAUNCH_CHOICE" = "N" ]; then
+        echo "[INFO] Skipping auto-launch."
+        return 1
+    fi
+
+    echo "[LAUNCHING] Starting ComfyUI in the background..."
+    $COMFY_CMD &
+    echo "[WAITING] Waiting for ComfyUI server to become ready at $DEFAULT_SERVER..."
+    for i in $(seq 1 20); do
+        if $PYTHON_EXE -c "import urllib.request; urllib.request.urlopen('http://$DEFAULT_SERVER/system_stats', timeout=1.5)" >/dev/null 2>&1; then
+            echo "[OK] ComfyUI is online and ready!"
+            return 0
+        fi
+        sleep 2
+    done
+
+    echo "[TIMEOUT] ComfyUI did not respond within 40 seconds."
+    return 1
+}
+
 while true; do
     clear
     echo "==========================================================================="
@@ -49,6 +91,10 @@ while true; do
 
     case "$CHOICE" in
         1)
+            if ! ensure_comfyui; then
+                read -r -p "Press Enter to return to menu..."
+                continue
+            fi
             echo ""
             echo "[RUNNING] Executing Commercial Batch Model Swap across Campaign Lookbooks..."
             for campaign_file in data/input_campaign/campaign_fashion_*.png; do
@@ -70,6 +116,10 @@ while true; do
             read -r -p "Press Enter to return to menu..."
             ;;
         2)
+            if ! ensure_comfyui; then
+                read -r -p "Press Enter to return to menu..."
+                continue
+            fi
             echo ""
             echo "[RUNNING] Executing Instant Composite Test Dry-Run (No GPU Required)..."
             if [ ! -f "data_synthetic/input_campaign/campaign_summer_lookbook.png" ]; then

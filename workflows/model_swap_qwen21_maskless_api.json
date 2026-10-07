@@ -35,8 +35,8 @@
     "class_type": "TextEncodeQwenImage21",
     "inputs": {
       "clip": ["4", 0],
-      "prompt": "In <image1>, replace the person with the target reference model from <image2>. The person in <image2> is now wearing the exact clothing and outfit from <image1>. Keep all clothing, garments, tailoring, shoes, accessories, pose, and studio background from <image1> completely unchanged. Do not transfer any clothing from <image2>. Only transfer the face, facial features, hair, skin tone, and identity of the model in <image2>. Photorealistic high-end commercial fashion lookbook photograph.",
-      "negative_prompt": "",
+      "prompt": "In <image1>, replace the person with the target reference model from <image2>. Transfer the full identity, face, facial features, hair, skin tone, neck, shoulders, and entire anatomical body shape, build, and physique of the model in <image2>. The model in <image2> is now wearing the garments, clothing style, colors, fabric textures, and outfit from <image1>, naturally tailored, fitted, and proportioned to match their body shape and physique. Preserve the studio lighting, background setting, accessories, and shoes from <image1>. Do not transfer any clothing from <image2>. Photorealistic high-end commercial fashion lookbook photograph, natural anatomical proportions.",
+      "negative_prompt": "mismatched head, mismatched body shape, deformed neck, bobblehead, distorted proportions, blurry, unnatural anatomy, bad posture",
       "resolution": 1024,
       "images.image_1": ["1", 0],
       "images.image_2": ["2", 0],
