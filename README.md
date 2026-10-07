@@ -203,15 +203,9 @@ Launch the interactive management console to execute campaigns, run zero-GPU dry
   Default server: 127.0.0.1:8000
 ===========================================================================
 
-  [1] Run Model Swap (Female Lookbook -> Multi-Ethnic Models, Qwen DiT)
-  [2] Run Model Swap (Male Lookbook -> Multi-Ethnic Models, Qwen DiT)
-  [3] Run Test Dry-Run (Composite Swap - Instant Zero-GPU Verification)
-  [4] Run Model Swap with Custom Server Address
-  [5] Generate Synthetic Test Dataset (Zero Downloads)
-  [6] Standardize Raw Photos to 896x1152 (Aspect-Fit Resampler)
-  [7] Run Automated Test Suite (Pytest + Coverage)
-  [8] Run Code Linter and Style Format (Ruff)
-  [9] Run Full GitHub Actions CI Gate Locally (Lint + Format + Smoke + Coverage)
+  [1] Run Commercial Model Swap  (Campaign Lookbooks - Diverse Personas)
+  [2] Run Quick Dry-Run          (Instant Zero-GPU Verification, < 1s)
+  [3] Run Quality Gate and Tests (Pytest 55/55 + Coverage + Ruff)
   [0] Exit
 ```
 

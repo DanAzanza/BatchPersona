@@ -37,7 +37,7 @@ set "DEFAULT_SERVER=%COMFYUI_SERVER%"
 if "!DEFAULT_SERVER!"=="" set "DEFAULT_SERVER=127.0.0.1:8000"
 
 :: ============================================================================
-:: Interactive Menu Mode
+:: Streamlined Interactive Menu
 :: ============================================================================
 :MENU
 cls
@@ -45,65 +45,51 @@ echo ===========================================================================
 echo       BatchPersona - Headless ComfyUI Model Replacement Pipeline
 echo ===========================================================================
 echo   Python runtime: %PYTHON_EXE%
-echo   Default server: !DEFAULT_SERVER!
+echo   Server address: !DEFAULT_SERVER!
 echo ===========================================================================
 echo.
-echo   [1] Run Model Swap (Female Lookbook -> Multi-Ethnic Models, Qwen DiT)
-echo   [2] Run Model Swap (Male Lookbook -> Multi-Ethnic Models, Qwen DiT)
-echo   [3] Run Test Dry-Run (Composite Swap - Instant Zero-GPU Verification)
-echo   [4] Run Model Swap with Custom Server Address
-echo   [5] Generate Synthetic Test Dataset (Zero Downloads)
-echo   [6] Standardize Raw Photos to 896x1152 (Aspect-Fit Resampler)
-echo   [7] Run Automated Test Suite (Pytest + Coverage)
-echo   [8] Run Code Linter and Style Format (Ruff)
-echo   [9] Run Full GitHub Actions CI Gate Locally (Lint + Format + Smoke + Coverage)
+echo   [1] Run Commercial Model Swap  (Campaign Lookbooks - Diverse Personas)
+echo   [2] Run Quick Dry-Run          (Instant Zero-GPU Verification, ^< 1s)
+echo   [3] Run Quality Gate and Tests (Pytest 55/55 + Coverage + Ruff)
 echo   [0] Exit
 echo.
 echo ===========================================================================
-set /p "CHOICE=Select an option [1-9, 0]: "
+set /p "CHOICE=Select an option [1-3, 0]: "
 
-if "%CHOICE%"=="1" goto :SWAP_FEMALE
-if "%CHOICE%"=="2" goto :SWAP_MALE
-if "%CHOICE%"=="3" goto :SWAP_COMPOSITE
-if "%CHOICE%"=="4" goto :SWAP_CUSTOM
-if "%CHOICE%"=="5" goto :GEN_DATA
-if "%CHOICE%"=="6" goto :PREP_DATA
-if "%CHOICE%"=="7" goto :RUN_TESTS
-if "%CHOICE%"=="8" goto :RUN_LINT
-if "%CHOICE%"=="9" goto :RUN_CI
+if "%CHOICE%"=="1" goto :SWAP_CAMPAIGN
+if "%CHOICE%"=="2" goto :SWAP_COMPOSITE
+if "%CHOICE%"=="3" goto :RUN_QUALITY_GATE
 if "%CHOICE%"=="0" goto :EXIT
 
-echo [WARNING] Invalid selection. Please enter a number between 0 and 9.
+echo [WARNING] Invalid selection. Please enter a number between 0 and 3.
 timeout /t 2 >nul
 goto :MENU
 
 :: ============================================================================
 :: Action Handlers
 :: ============================================================================
-:SWAP_FEMALE
+:SWAP_CAMPAIGN
 echo.
-echo [RUNNING] Executing Batch Model Swap for Female Lookbook...
-%PYTHON_EXE% scripts\batch_swapper.py ^
-    --server !DEFAULT_SERVER! ^
-    --campaign data\input_campaign\campaign_fashion_female.png ^
-    --models-dir data\input_models ^
-    --output-dir data\output ^
-    --workflow workflows\model_swap_qwen21_maskless_api.json ^
-    --market-tag apac ^
-    --timeout 300.0
-goto :FINISH
-
-:SWAP_MALE
-echo.
-echo [RUNNING] Executing Batch Model Swap for Male Lookbook...
-%PYTHON_EXE% scripts\batch_swapper.py ^
-    --server !DEFAULT_SERVER! ^
-    --campaign data\input_campaign\campaign_fashion_male.png ^
-    --models-dir data\input_models ^
-    --output-dir data\output ^
-    --workflow workflows\model_swap_qwen21_maskless_api.json ^
-    --market-tag global ^
-    --timeout 300.0
+echo [RUNNING] Executing Commercial Batch Model Swap across Campaign Lookbooks...
+set "PROCESSED_COUNT=0"
+for %%C in (data\input_campaign\campaign_fashion_*.png) do (
+    set /a PROCESSED_COUNT+=1
+    echo.
+    echo ===========================================================================
+    echo [CAMPAIGN !PROCESSED_COUNT!] Processing Lookbook: %%~nxC
+    echo ===========================================================================
+    %PYTHON_EXE% scripts\batch_swapper.py ^
+        --server !DEFAULT_SERVER! ^
+        --campaign "%%C" ^
+        --models-dir data\input_models ^
+        --output-dir data\output ^
+        --workflow workflows\model_swap_qwen21_maskless_api.json ^
+        --market-tag global ^
+        --timeout 300.0
+)
+if !PROCESSED_COUNT! EQU 0 (
+    echo [WARNING] No campaign images found matching data\input_campaign\campaign_fashion_*.png
+)
 goto :FINISH
 
 :SWAP_COMPOSITE
@@ -124,50 +110,9 @@ if not exist "data_synthetic\input_campaign\campaign_summer_lookbook.png" (
     --timeout 30.0
 goto :FINISH
 
-:SWAP_CUSTOM
+:RUN_QUALITY_GATE
 echo.
-set /p "SERVER_ADDR=Enter ComfyUI server address (e.g. 127.0.0.1:8188 or 127.0.0.1:8000): "
-if "!SERVER_ADDR!"=="" set "SERVER_ADDR=!DEFAULT_SERVER!"
-echo [RUNNING] Executing with server: !SERVER_ADDR!...
-%PYTHON_EXE% scripts\batch_swapper.py ^
-    --server !SERVER_ADDR! ^
-    --campaign data\input_campaign\campaign_fashion_female.png ^
-    --models-dir data\input_models ^
-    --output-dir data\output ^
-    --workflow workflows\model_swap_qwen21_maskless_api.json ^
-    --market-tag apac
-goto :FINISH
-
-:GEN_DATA
-echo.
-echo [RUNNING] Generating procedural synthetic test dataset...
-%PYTHON_EXE% scripts\generate_testdata.py --output-dir data_synthetic --size 896
-goto :FINISH
-
-:PREP_DATA
-echo.
-set /p "RAW_DIR=Enter directory containing raw candidate images (default: data): "
-if "!RAW_DIR!"=="" set "RAW_DIR=data"
-echo [RUNNING] Standardizing dataset to 896x1152...
-%PYTHON_EXE% scripts\prepare_fullbody_dataset.py --source-dir "!RAW_DIR!" --output-dir data
-goto :FINISH
-
-:RUN_TESTS
-echo.
-echo [RUNNING] Running automated pytest test suite and coverage check...
-%PYTHON_EXE% -m pytest tests --cov=scripts --cov-report=term-missing -v
-goto :FINISH
-
-:RUN_LINT
-echo.
-echo [RUNNING] Running Ruff linter and code formatter...
-%PYTHON_EXE% -m ruff check .
-%PYTHON_EXE% -m ruff format --check .
-goto :FINISH
-
-:RUN_CI
-echo.
-echo [RUNNING] Running Complete GitHub Actions CI Gate locally...
+echo [RUNNING] Running Complete Quality Gate and CI Verification locally...
 %PYTHON_EXE% scripts\run_ci_locally.py
 goto :FINISH
 
