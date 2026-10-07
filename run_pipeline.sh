@@ -97,7 +97,7 @@ while true; do
             fi
             echo ""
             echo "[RUNNING] Executing Commercial Batch Model Swap across Campaign Lookbooks..."
-            for campaign_file in data/input_campaign/campaign_fashion_*.png; do
+            for campaign_file in data/input_campaign/*.png data/input_campaign/*.jpg data/input_campaign/*.jpeg data/input_campaign/*.webp; do
                 if [ -f "$campaign_file" ]; then
                     echo ""
                     echo "==========================================================================="
@@ -109,7 +109,6 @@ while true; do
                         --models-dir data/input_models \
                         --output-dir data/output \
                         --workflow workflows/model_swap_qwen21_maskless_api.json \
-                        --market-tag global \
                         --timeout 300.0
                 fi
             done

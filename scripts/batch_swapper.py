@@ -523,7 +523,7 @@ class BatchSwapper:
     ) -> JobResult:
         """Execute single model replacement job sequentially."""
         model_stem = model_file.stem
-        output_prefix = f"campaign_{self._config.market_tag}_{model_stem}"
+        output_prefix = f"{self._config.campaign_path.stem}_{model_stem}"
         job_start = time.time()
         client_id = str(uuid.uuid4())
         is_oom = False

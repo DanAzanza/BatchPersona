@@ -83,6 +83,14 @@ def process_dataset(artifacts_dir: Path, workspace_data_dir: Path) -> int:
             name_map["campaign_female"] = f
         elif "campaign_editorial_male" in fname:
             name_map["campaign_male"] = f
+        elif "campaign_urban_female" in fname:
+            name_map["campaign_urban_female"] = f
+        elif "campaign_arch_male" in fname:
+            name_map["campaign_arch_male"] = f
+        elif "campaign_resort_female" in fname:
+            name_map["campaign_resort_female"] = f
+        elif "campaign_street_male" in fname:
+            name_map["campaign_street_male"] = f
         elif "model_east_asia_f" in fname:
             name_map["model_east_asia_f01"] = f
         elif "model_west_africa_m" in fname:
@@ -98,6 +106,10 @@ def process_dataset(artifacts_dir: Path, workspace_data_dir: Path) -> int:
     campaign_mapping = [
         ("campaign_female", campaign_dir / "campaign_fashion_female.png"),
         ("campaign_male", campaign_dir / "campaign_fashion_male.png"),
+        ("campaign_urban_female", campaign_dir / "campaign_fashion_urban_female.png"),
+        ("campaign_arch_male", campaign_dir / "campaign_fashion_arch_male.png"),
+        ("campaign_resort_female", campaign_dir / "campaign_fashion_resort_female.png"),
+        ("campaign_street_male", campaign_dir / "campaign_fashion_street_male.png"),
     ]
     processed_count = 0
     for key, img_dst in campaign_mapping:

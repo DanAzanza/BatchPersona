@@ -75,23 +75,24 @@ if %ERRORLEVEL% NEQ 0 goto :FINISH
 echo.
 echo [RUNNING] Executing Commercial Batch Model Swap across Campaign Lookbooks...
 set "PROCESSED_COUNT=0"
-for %%C in (data\input_campaign\campaign_fashion_*.png) do (
-    set /a PROCESSED_COUNT+=1
-    echo.
-    echo ===========================================================================
-    echo [CAMPAIGN !PROCESSED_COUNT!] Processing Lookbook: %%~nxC
-    echo ===========================================================================
-    %PYTHON_EXE% scripts\batch_swapper.py ^
-        --server !DEFAULT_SERVER! ^
-        --campaign "%%C" ^
-        --models-dir data\input_models ^
-        --output-dir data\output ^
-        --workflow workflows\model_swap_qwen21_maskless_api.json ^
-        --market-tag global ^
-        --timeout 300.0
+for %%C in (data\input_campaign\*.png data\input_campaign\*.jpg data\input_campaign\*.jpeg data\input_campaign\*.webp) do (
+    if exist "%%C" (
+        set /a PROCESSED_COUNT+=1
+        echo.
+        echo ===========================================================================
+        echo [CAMPAIGN !PROCESSED_COUNT!] Processing Lookbook: %%~nxC
+        echo ===========================================================================
+        %PYTHON_EXE% scripts\batch_swapper.py ^
+            --server !DEFAULT_SERVER! ^
+            --campaign "%%C" ^
+            --models-dir data\input_models ^
+            --output-dir data\output ^
+            --workflow workflows\model_swap_qwen21_maskless_api.json ^
+            --timeout 300.0
+    )
 )
 if !PROCESSED_COUNT! EQU 0 (
-    echo [WARNING] No campaign images found matching data\input_campaign\campaign_fashion_*.png
+    echo [WARNING] No campaign images found in data\input_campaign (supported: .png, .jpg, .jpeg, .webp)
 )
 goto :FINISH
 

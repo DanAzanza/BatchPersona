@@ -585,8 +585,8 @@ def test_batch_swapper_end_to_end_mock(tmp_path: Path) -> None:
 
     assert len(results) == 2
     assert all(r.status == JobStatus.SUCCESS for r in results)
-    assert (output_dir / "campaign_emea_model_01.png").is_file()
-    assert (output_dir / "campaign_emea_model_02.png").is_file()
+    assert (output_dir / "campaign_model_01.png").is_file()
+    assert (output_dir / "campaign_model_02.png").is_file()
     assert mock_client.free_memory.call_count == 2
 
 
