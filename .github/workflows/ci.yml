@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   lint:
-    name: Lint & Style Gate (Ruff)
+    name: Lint & Type Gate (Ruff & Pyright)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -28,16 +28,20 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install Linting Tools
+      - name: Install Linting & Typing Tools
         run: |
           python -m pip install --upgrade pip
-          pip install ruff
+          pip install ruff pyright
+          pip install -r requirements.txt
 
       - name: Run Ruff Linter
         run: python -m ruff check .
 
       - name: Run Ruff Format Check
         run: python -m ruff format --check .
+
+      - name: Run Pyright Static Type Checker
+        run: python -m pyright scripts tests
 
   test:
     name: Test Suite (${{ matrix.os }} - Python ${{ matrix.python-version }})
@@ -47,7 +51,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout Repository

@@ -42,5 +42,7 @@ data/output/*.png
 !data/output/.gitkeep
 data_ci/
 data_synthetic/
+.ci_local_staging/
+data/test_eval/
 .env
 .ruff_cache/

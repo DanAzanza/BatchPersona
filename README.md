@@ -4,9 +4,11 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![CI Quality Gate](https://github.com/DanAzanza/BatchPersona/actions/workflows/ci.yml/badge.svg)](https://github.com/DanAzanza/BatchPersona/actions/workflows/ci.yml)
+[![Type Checker: Pyright](https://img.shields.io/badge/type%20checker-pyright%200%20errors-blue.svg)](pyproject.toml)
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%2F%20WebSocket-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
-[![Architecture: DiT](https://img.shields.io/badge/Diffusion-Qwen%20Image%202.1%20DiT-purple.svg)](https://huggingface.co/Qwen)
-[![Coverage: 92% Branch](https://img.shields.io/badge/test%20coverage-92%25%20branch-brightgreen.svg)](tests/)
+[![Architecture: DiT](https://img.shields.io/badge/Diffusion-Qwen%20Image%202.1%20DiT-purple.svg)](docs/ARCHITECTURE.md)
+[![Coverage: 91% Branch](https://img.shields.io/badge/test%20coverage-91%25%20branch-brightgreen.svg)](tests/)
+[![Tests: 55 Passed](https://img.shields.io/badge/tests-55%20passed-success.svg)](tests/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -64,6 +66,9 @@ The pipeline generates authentic, photorealistic model replacements while mainta
 
 ## 🏗️ Architecture & Core Innovations
 
+> [!TIP]
+> **Staff-Level Architecture Deep Dive**: For complete mathematical derivations of Rectified Flow Matching (RFM), Classifier-Free Guidance (CFG) velocity fields, attention crosstalk prevention, headless WebSocket state machines, and empirical hardware benchmarks, consult [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ### 1. Maskless DiT Multimodal Conditioning vs. Traditional Inpainting
 
 Traditional inpainting pipelines rely on binary segmentation masks and IP-Adapter / ControlNet stacks. While functional, binary masks frequently produce **seam artifacts, fringe halos, and color bleed** along garment edges, particularly with complex textures, hair strands, and delicate collars.
@@ -116,7 +121,7 @@ sequenceDiagram
 
 ## 💻 Software Engineering Highlights
 
-* **Layered Architecture & Strict Typing**: Fully typed using `typing.Self`, `Path`, `collections.abc`, and dataclasses. Adheres strictly to Command-Query Separation (CQS) and clean abstraction levels.
+* **Layered Architecture & Strict Typing**: Modern static type annotations compliant with Python 3.10+, Pyright (0 errors / 0 warnings), immutable dataclasses, explicit generic collections, and strict separation of presentation, transport, and domain logic.
 * **Fail-Fast Configuration**: `SwapperConfig` validates file existence, directory access, and timeout bounds immediately at initialization, avoiding runtime failures halfway through a batch.
 * **Deadlock-Free WebSockets**: `track_execution` enforces non-blocking socket timeouts (`ws.settimeout(min(2.0, remaining))`) with overall wall-clock deadlines to prevent infinite hangs if the ComfyUI backend stalls.
 * **OOM & Memory Management**: Between batch iterations, the client invokes `/free` with PyTorch CUDA cache clearing. In the event of CUDA Out-Of-Memory errors, it triggers full model eviction (`unload_models=True`) before continuing.
@@ -129,6 +134,8 @@ sequenceDiagram
 
 ```text
 BatchPersona/
+├── .github/
+│   └── workflows/ci.yml         # Multi-platform (Linux/Windows) CI quality gate
 ├── data/
 │   ├── input_campaign/          # Standardized 896x1152 fashion lookbooks
 │   │   ├── campaign_fashion_female.png
@@ -140,6 +147,7 @@ BatchPersona/
 │   │   └── model_south_america_m01.png
 │   └── output/                  # Localized campaign deliverables
 ├── docs/
+│   ├── ARCHITECTURE.md          # 📐 Mathematical derivations & systems architecture
 │   └── images/                  # Showcase banners and comparison matrix assets
 ├── workflows/
 │   ├── model_swap_qwen21_maskless_api.json  # 🌟 Flagship Qwen 2.1 DiT API graph
@@ -147,17 +155,20 @@ BatchPersona/
 │   ├── model_swap_auto_mask_api.json        # RemBg/BiRefNet autonomous masking
 │   └── model_swap_composite_api.json        # Lightweight compositor fallback
 ├── scripts/
+│   ├── __init__.py              # Package marker
 │   ├── batch_swapper.py         # Headless REST/WebSocket orchestrator
 │   ├── generate_testdata.py     # Pure Python synthetic lookbook/portrait generator
-│   └── prepare_fullbody_dataset.py # Centering-aware dataset preprocessor (ImageOps.fit)
+│   ├── prepare_fullbody_dataset.py # Centering-aware dataset preprocessor (ImageOps.fit)
+│   └── run_ci_locally.py        # Local CI parity orchestrator (Ruff, Gen, Tests)
 ├── tests/
-│   └── test_batch_swapper.py    # Comprehensive test suite (47 tests, 92% branch cov)
+│   ├── test_batch_swapper.py    # Unit & integration test suite (47 tests)
+│   └── test_ci_parity.py        # CI parity, requirements, AST compatibility (8 tests)
 ├── install.bat                  # ⚡ Windows 1-Click Environment Setup & Self-Test
 ├── install.sh                   # ⚡ Linux/macOS 1-Click Environment Setup & Self-Test
 ├── run_pipeline.bat             # 🚀 Windows Interactive Management & Batch Runner
 ├── run_pipeline.sh              # 🚀 Linux/macOS Interactive Management & Batch Runner
 ├── .env.example                 # Configuration template (COMFYUI_SERVER, timeout)
-├── pyproject.toml               # Modern packaging, pytest, and ruff configuration
+├── pyproject.toml               # Modern packaging, CLI scripts, pytest, ruff & pyright
 ├── requirements.txt             # Minimal, locked production dependencies
 ├── .gitignore                   # Caches, virtual environments, and temporary artifacts
 ├── LICENSE                      # MIT License
@@ -237,9 +248,10 @@ python scripts/prepare_fullbody_dataset.py --source-dir path/to/raw_photos --out
 
 ### Headless Batch Execution
 
-Run the model replacement pipeline against an active ComfyUI instance:
+Run the model replacement pipeline against an active ComfyUI instance (via standard script invocation or package entrypoint `batchpersona`):
 
 ```bash
+# Standard Python invocation:
 python scripts/batch_swapper.py \
   --server 127.0.0.1:8000 \
   --campaign data/input_campaign/campaign_fashion_female.png \
@@ -248,6 +260,9 @@ python scripts/batch_swapper.py \
   --workflow workflows/model_swap_qwen21_maskless_api.json \
   --market-tag apac \
   --timeout 300.0
+
+# Or via package console entrypoint (when installed with `pip install -e .`):
+batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models
 ```
 
 ### CLI Arguments Reference
@@ -268,7 +283,7 @@ python scripts/batch_swapper.py \
 
 ## 🧪 Verification & Test Suite
 
-The test suite provides **92% branch coverage** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
+The automated test suite provides **91% branch coverage (55 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
 
 Run the complete test suite with coverage report:
 
@@ -296,20 +311,27 @@ This sequentially runs:
 ```text
 Name                                  Stmts   Miss Branch BrPart  Cover   Missing
 ---------------------------------------------------------------------------------
-scripts\batch_swapper.py                389     32    128     22    89%   ...
+scripts\__init__.py                       0      0      0      0   100%
+scripts\batch_swapper.py                399     32    130     22    89%   ...
 scripts\generate_testdata.py            166      2      6      1    98%   ...
-scripts\prepare_fullbody_dataset.py      73      2     28      3    95%   ...
+scripts\prepare_fullbody_dataset.py      81      6     36      7    89%   ...
+scripts\run_ci_locally.py                66      6     22      6    86%   ...
 ---------------------------------------------------------------------------------
-TOTAL                                   628     36    162     26    92%
+TOTAL                                   712     46    194     36    91%
+Required test coverage of 90.0% reached. Total coverage: 90.73%
 ```
 
-### Linting & Formatting Quality Gate
+### Linting & Static Typing Quality Gate
 
-Verify compliance with strict PEP standards:
+Verify compliance with strict PEP standards and strict static typing:
 
 ```bash
+# Code style and linting (0 warnings)
 python -m ruff check .
 python -m ruff format --check .
+
+# Strict static type analysis (0 errors, 0 warnings)
+python -m pyright scripts tests
 ```
 
 ---
