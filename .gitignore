@@ -41,4 +41,6 @@ Desktop.ini
 data/output/*.png
 !data/output/.gitkeep
 data_ci/
+data_synthetic/
+.env
 .ruff_cache/

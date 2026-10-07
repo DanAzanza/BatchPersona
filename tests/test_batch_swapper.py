@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+import requests
 from PIL import Image
 
 from scripts.batch_swapper import (
@@ -1137,3 +1138,50 @@ def test_prepare_fullbody_dataset_main(tmp_path: Path, monkeypatch: pytest.Monke
     with pytest.raises(SystemExit) as exc_info:
         prep_main()
     assert exc_info.value.code == 1
+
+
+def test_client_check_connection() -> None:
+    """Verify check_connection returns True on 200 and False on error."""
+    mock_session = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_session.get.return_value = mock_resp
+
+    client = ComfyUIClient(server_address="127.0.0.1:8188", session=mock_session)
+    assert client.check_connection() is True
+
+    mock_session.get.side_effect = requests.RequestException("Offline")
+    assert client.check_connection() is False
+
+
+def test_batch_swapper_preflight_connection_failure(tmp_path: Path) -> None:
+    """Verify run_batch raises ComfyAPIError with troubleshooting tips if server is offline."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "m.png").write_bytes(b"data")
+    campaign = tmp_path / "c.png"
+    campaign.write_bytes(b"data")
+    wf = tmp_path / "wf.json"
+    wf.write_text(json.dumps({"1": {"class_type": "LoadImage", "inputs": {}}}), encoding="utf-8")
+
+    config = SwapperConfig(
+        server_address="127.0.0.1:8188",
+        campaign_path=campaign,
+        models_dir=models_dir,
+        output_dir=tmp_path / "out",
+        workflow_path=wf,
+    )
+    mock_client = MagicMock(spec=ComfyUIClient)
+    mock_client.check_connection.return_value = False
+    mock_client._http_base = "http://127.0.0.1:8188"
+
+    swapper = BatchSwapper(config=config, client=mock_client)
+    with pytest.raises(ComfyAPIError, match="Cannot connect to ComfyUI"):
+        swapper.run_batch()
+
+
+def test_parse_cli_args_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify parse_cli_args respects COMFYUI_SERVER environment variable."""
+    monkeypatch.setenv("COMFYUI_SERVER", "192.168.1.50:8000")
+    args = parse_cli_args(["--campaign", "c.png", "--models-dir", "m"])
+    assert args.server == "192.168.1.50:8000"

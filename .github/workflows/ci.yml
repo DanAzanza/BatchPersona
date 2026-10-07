@@ -67,7 +67,7 @@ jobs:
 
       - name: Run Automated Test Suite with Coverage
         run: |
-          python -m pytest tests/test_batch_swapper.py --cov=scripts --cov-report=term-missing --cov-report=xml -v
+          python -m pytest tests --cov=scripts --cov-report=term-missing --cov-report=xml -v
 
       - name: Upload Test Coverage Artifact
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'

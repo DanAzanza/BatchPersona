@@ -40,7 +40,8 @@
 - `workflows/model_swap_composite_api.json`: Live integration verification workflow using `ImageCompositeMasked` (instant CPU/GPU pipeline execution).
 
 ## Verification & Test Commands
-- Fast test suite with coverage: `python -m pytest tests/test_batch_swapper.py --cov=scripts --cov-report=term-missing -v`
+- Fast test suite with coverage: `python -m pytest tests --cov=scripts --cov-report=term-missing -v`
+- Full local CI Quality Gate: `python scripts/run_ci_locally.py`
 - Code formatting & linting: `python -m ruff check .` and `python -m ruff format --check .`
 - Procedural synthetic test data generation: `python scripts/generate_testdata.py`
 - Full-body aspect-ratio preserving dataset standardization: `python scripts/prepare_fullbody_dataset.py`

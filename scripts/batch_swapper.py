@@ -10,6 +10,7 @@ import argparse
 import contextlib
 import json
 import logging
+import os
 import sys
 import time
 import types
@@ -257,6 +258,14 @@ class ComfyUIClient:
     @staticmethod
     def _default_ws_connect(url: str, timeout: float) -> Any:
         return websocket.create_connection(url, timeout=timeout)
+
+    def check_connection(self, timeout: float = 3.0) -> bool:
+        """Check if ComfyUI REST server is reachable and responsive."""
+        try:
+            resp = self._session.get(f"{self._http_base}/system_stats", timeout=timeout)
+            return resp.status_code == 200
+        except (requests.RequestException, OSError):
+            return False
 
     def upload_image(self, file_path: Path, image_type: str = "input") -> str:
         """Upload image to ComfyUI /upload/image endpoint. Returns stored filename."""
@@ -630,6 +639,16 @@ class BatchSwapper:
             self._config.models_dir,
         )
 
+        # Pre-flight ComfyUI server connectivity check
+        if not self._client.check_connection():
+            raise ComfyAPIError(
+                f"Cannot connect to ComfyUI at {self._client._http_base}.\n"
+                f"Troubleshooting tips:\n"
+                f"  1. Verify ComfyUI is running.\n"
+                f"  2. Check server port: ComfyUI Desktop typically runs on 8000, while portable/git uses 8188.\n"
+                f"  3. Pass --server 127.0.0.1:<port> or export COMFYUI_SERVER env var."
+            )
+
         # Ingest campaign base image
         LOGGER.info("Ingesting base campaign asset: %s", self._config.campaign_path)
         campaign_asset_name = self._client.upload_image(self._config.campaign_path)
@@ -699,10 +718,11 @@ def parse_cli_args(args: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Production Headless ComfyUI Batch Model Replacement Pipeline"
     )
+    default_server = os.environ.get("COMFYUI_SERVER", "127.0.0.1:8188")
     parser.add_argument(
         "--server",
-        default="127.0.0.1:8188",
-        help="ComfyUI server address (host:port). Default: 127.0.0.1:8188",
+        default=default_server,
+        help=f"ComfyUI server address (host:port). Default: $COMFYUI_SERVER or {default_server}",
     )
     parser.add_argument(
         "--campaign",

@@ -151,8 +151,12 @@ BatchPersona/
 │   ├── generate_testdata.py     # Pure Python synthetic lookbook/portrait generator
 │   └── prepare_fullbody_dataset.py # Centering-aware dataset preprocessor (ImageOps.fit)
 ├── tests/
-│   └── test_batch_swapper.py    # Comprehensive test suite (44 tests, 92% branch cov)
-├── run_pipeline.bat             # 🚀 Windows 1-Click & Interactive Menu Runner
+│   └── test_batch_swapper.py    # Comprehensive test suite (47 tests, 92% branch cov)
+├── install.bat                  # ⚡ Windows 1-Click Environment Setup & Self-Test
+├── install.sh                   # ⚡ Linux/macOS 1-Click Environment Setup & Self-Test
+├── run_pipeline.bat             # 🚀 Windows Interactive Management & Batch Runner
+├── run_pipeline.sh              # 🚀 Linux/macOS Interactive Management & Batch Runner
+├── .env.example                 # Configuration template (COMFYUI_SERVER, timeout)
 ├── pyproject.toml               # Modern packaging, pytest, and ruff configuration
 ├── requirements.txt             # Minimal, locked production dependencies
 ├── .gitignore                   # Caches, virtual environments, and temporary artifacts
@@ -164,26 +168,32 @@ BatchPersona/
 
 ## 🚀 Quickstart Guide
 
-### 1. Prerequisites & Environment Setup
+### 1. One-Click Automated Setup (Zero Friction)
 
-Clone the repository and install dependencies in a clean virtual environment:
+BatchPersona provides automated installers that configure a dedicated virtual environment, install dependencies, synthesize initial lookbooks, and run a self-test suite:
 
+* **Windows**: Double-click **`install.bat`** (or execute `cmd /c install.bat`).
+* **Linux / macOS**:
+  ```bash
+  chmod +x install.sh run_pipeline.sh
+  ./install.sh
+  ```
+
+*Manual Setup Fallback:*
 ```bash
 git clone https://github.com/DanAzanza/BatchPersona.git
 cd BatchPersona
-
 python -m venv .venv
-# On Windows:
-.venv\Scripts\activate
-# On Linux/macOS:
-source .venv/bin/activate
-
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Windows 1-Click Batch Runner (`run_pipeline.bat`)
+### 2. Interactive Pipeline Runner
 
-On Windows, double-click **`run_pipeline.bat`** to open the interactive management menu:
+Launch the interactive management console to execute campaigns, run zero-GPU dry runs, or inspect tests:
+
+* **Windows**: Double-click **`run_pipeline.bat`**
+* **Linux / macOS**: Execute **`./run_pipeline.sh`**
 
 ```text
 ===========================================================================
@@ -193,17 +203,19 @@ On Windows, double-click **`run_pipeline.bat`** to open the interactive manageme
   Default server: 127.0.0.1:8000
 ===========================================================================
 
-  [1] Run Model Swap (Female Lookbook -> Multi-Ethnic Models)
-  [2] Run Model Swap (Male Lookbook -> Multi-Ethnic Models)
-  [3] Run Model Swap with Custom Server Address
-  [4] Generate Synthetic Test Dataset (Zero Downloads)
-  [5] Standardize Raw Photos to 896x1152 (Aspect-Fit Resampler)
-  [6] Run Automated Test Suite (Pytest + Coverage)
-  [7] Run Code Linter & Style Format (Ruff)
+  [1] Run Model Swap (Female Lookbook -> Multi-Ethnic Models, Qwen DiT)
+  [2] Run Model Swap (Male Lookbook -> Multi-Ethnic Models, Qwen DiT)
+  [3] Run Test Dry-Run (Composite Swap - Instant Zero-GPU Verification)
+  [4] Run Model Swap with Custom Server Address
+  [5] Generate Synthetic Test Dataset (Zero Downloads)
+  [6] Standardize Raw Photos to 896x1152 (Aspect-Fit Resampler)
+  [7] Run Automated Test Suite (Pytest + Coverage)
+  [8] Run Code Linter and Style Format (Ruff)
+  [9] Run Full GitHub Actions CI Gate Locally (Lint + Format + Smoke + Coverage)
   [0] Exit
 ```
 
-Or pass arguments directly through the batch runner:
+Or pass arguments directly through the runner from your terminal:
 
 ```cmd
 run_pipeline.bat --campaign data\input_campaign\campaign_fashion_female.png --models-dir data\input_models
@@ -264,11 +276,26 @@ python scripts/batch_swapper.py \
 
 The test suite provides **92% branch coverage** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
 
-Run the test suite with coverage report:
+Run the complete test suite with coverage report:
 
 ```bash
-python -m pytest tests/test_batch_swapper.py --cov=scripts --cov-report=term-missing -v
+python -m pytest tests --cov=scripts --cov-report=term-missing -v
 ```
+
+### GitHub Actions CI Parity (Run CI Locally)
+
+Mirror the exact GitHub Actions multi-stage CI pipeline deterministically on your local machine with a single command:
+
+```bash
+python scripts/run_ci_locally.py
+```
+
+This sequentially runs:
+1. `ruff check .` (PEP compliance static linting)
+2. `ruff format --check .` (Code style formatting verification)
+3. `python scripts/generate_testdata.py --output-dir .ci_local_staging --size 256` (Synthetic data CI smoke test)
+4. `pytest tests --cov=scripts --cov-report=term-missing -v` (Full unit & integration regression suite)
+5. Automatic cleanup of all staging artifacts
 
 ### Coverage Breakdown
 
