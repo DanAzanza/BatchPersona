@@ -3,6 +3,7 @@
 **Production-grade, headless batch-processing pipeline for automated model and persona replacement in commercial advertising campaigns using ComfyUI's REST & WebSocket API and Qwen Image 2.1 DiT multimodal inpainting.**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![CI Quality Gate](https://github.com/DanAzanza/BatchPersona/actions/workflows/ci.yml/badge.svg)](https://github.com/DanAzanza/BatchPersona/actions/workflows/ci.yml)
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%2F%20WebSocket-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Architecture: DiT](https://img.shields.io/badge/Diffusion-Qwen%20Image%202.1%20DiT-purple.svg)](https://huggingface.co/Qwen)
 [![Coverage: 92% Branch](https://img.shields.io/badge/test%20coverage-92%25%20branch-brightgreen.svg)](tests/)
