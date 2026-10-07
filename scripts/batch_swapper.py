@@ -19,7 +19,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Final, Self
+from typing import Any, Final
 
 import requests
 import websocket
@@ -355,7 +355,7 @@ class ComfyUIClient:
         """Close underlying HTTP session connection pools."""
         self._session.close()
 
-    def __enter__(self) -> Self:
+    def __enter__(self) -> ComfyUIClient:
         return self
 
     def __exit__(

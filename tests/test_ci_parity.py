@@ -195,3 +195,26 @@ def test_parse_cli_args_and_main(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("scripts.run_ci_locally.run_all_ci_stages", lambda **kwargs: 0)
     assert ci_main(["--skip-lint"]) == 0
+
+
+def test_python_310_compatibility() -> None:
+    """Verify scripts/ and tests/ do not import constructs requiring Python 3.11+."""
+    py311_typing_symbols = {
+        "Self",
+        "LiteralString",
+        "Never",
+        "assert_never",
+        "dataclass_transform",
+        "TypeVarTuple",
+        "reveal_type",
+    }
+    for folder in [REPO_ROOT / "scripts", REPO_ROOT / "tests"]:
+        for py_path in folder.glob("*.py"):
+            tree = ast.parse(py_path.read_text(encoding="utf-8"), filename=str(py_path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == "typing":
+                    for alias in node.names:
+                        assert alias.name not in py311_typing_symbols, (
+                            f"{py_path.name} imports '{alias.name}' from typing, "
+                            f"which breaks Python 3.10 compatibility"
+                        )
