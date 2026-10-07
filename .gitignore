@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.cover
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python Packaging & Distribution
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# IDE & Editor Artifacts
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS Generated Artifacts
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Pipeline Runtime Staging & Exports
+*.tmp*
+*.part
+*.log
+data/output/*.png
+!data/output/.gitkeep

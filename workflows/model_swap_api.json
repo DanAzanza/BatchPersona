@@ -1,0 +1,111 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{CAMPAIGN_IMG}}"
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{MASK_IMG}}"
+    }
+  },
+  "3": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "{{MODEL_IMG}}"
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "sd_xl_base_1.0_inpainting_0.1.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+    }
+  },
+  "6": {
+    "class_type": "IPAdapterModelLoader",
+    "inputs": {
+      "ipadapter_file": "ip-adapter-plus-face_sdxl_vit-h.safetensors"
+    }
+  },
+  "7": {
+    "class_type": "ImageToMask",
+    "inputs": {
+      "image": ["2", 0],
+      "channel": "red"
+    }
+  },
+  "8": {
+    "class_type": "VAEEncodeForInpaint",
+    "inputs": {
+      "pixels": ["1", 0],
+      "vae": ["4", 2],
+      "mask": ["7", 0],
+      "grow_mask_by": 12
+    }
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "high-end commercial fashion advertisement portrait, localized target persona, seamless skin tone transition, studio lighting, photorealistic commercial lookbook, 8k",
+      "clip": ["4", 1]
+    }
+  },
+  "10": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "distorted facial anatomy, blurry eyes, artifacts, bad skin texture, clothing modification, inconsistent lighting, visible seams, halo edges",
+      "clip": ["4", 1]
+    }
+  },
+  "11": {
+    "class_type": "IPAdapterApply",
+    "inputs": {
+      "model": ["4", 0],
+      "ipadapter": ["6", 0],
+      "clip_vision": ["5", 0],
+      "image": ["3", 0],
+      "attn_mask": ["7", 0],
+      "weight": 0.85,
+      "weight_type": "ease in-out",
+      "start_at": 0.0,
+      "end_at": 1.0
+    }
+  },
+  "12": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["11", 0],
+      "positive": ["9", 0],
+      "negative": ["10", 0],
+      "latent_image": ["8", 0],
+      "seed": 42,
+      "steps": 25,
+      "cfg": 6.5,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 0.85
+    }
+  },
+  "13": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["12", 0],
+      "vae": ["4", 2]
+    }
+  },
+  "14": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["13", 0],
+      "filename_prefix": "{{OUTPUT_PREFIX}}"
+    }
+  }
+}
