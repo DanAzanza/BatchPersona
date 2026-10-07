@@ -35,8 +35,8 @@
     "class_type": "TextEncodeQwenImage21",
     "inputs": {
       "clip": ["4", 0],
-      "prompt": "In <image1>, completely replace the original person with the target model from <image2>. The target model from <image2> must be placed into the exact clothing, outfit, garments, shoes, and pose of <image1>, in the exact background and lighting of <image1>. Do not transfer any clothing, garments, shirt, or pants from <image2>. The person in the output must wear the exact outfit, clothes, and shoes from <image1>, tailored and fitted to their body shape, shoulders, and proportions. Seamlessly transfer the full human identity from <image2>: their face, facial features, hair, gender, and their complete physical body build, frame, and physique. All exposed and visible skin on the person's body—including face, neck, chest, wrists, hands, and fingers—must strictly match the skin tone, texture, and complexion of the person from <image2>. Do not keep any skin, hands, face, or body shape of the original person in <image1>. Both hands and fingers must have the exact same skin tone and appearance as the person in <image2>. Photorealistic commercial fashion catalog photograph, identical clothing, pose, and background from <image1>, consistent skin tone across all visible skin.",
-      "negative_prompt": "clothing from <image2>, clothes from <image2>, casual clothing from <image2>, changed clothing, different outfit, changed pose, mismatched hands, mismatched skin tone, wrong skin color on hands, wrong skin color on neck or chest, original person's hands, original person's skin, original person's face, original person's body shape, bobblehead, deformed hands, extra fingers, blurry, distorted anatomy",
+      "prompt": "In <image1>, replace the person with the model from <image2>. The entire person from <image2> is now wearing the exact clothing and outfit from <image1> and adopting the exact pose from <image1>. Keep all clothing, garments, tailoring, shoes, accessories, pose, and background from <image1> completely unchanged. Do not transfer any clothing from <image2>. Photorealistic commercial fashion catalog photograph.",
+      "negative_prompt": "",
       "resolution": 1024,
       "images.image_1": ["1", 0],
       "images.image_2": ["2", 0],
@@ -52,7 +52,7 @@
       "latent_image": ["6", 2],
       "seed": 42,
       "steps": 25,
-      "cfg": 1.8,
+      "cfg": 1.0,
       "sampler_name": "euler",
       "scheduler": "simple",
       "denoise": 1.0

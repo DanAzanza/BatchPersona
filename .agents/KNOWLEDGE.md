@@ -30,13 +30,11 @@
   - Match `data.prompt_id == current_prompt_id` to prevent cross-talk on multi-client servers.
   - Completion signal: `executing` event with `data.node is None` and matching `prompt_id`.
   - Error detection: `execution_error` event contains node ID, exception type, and traceback.
-- **Qwen 2.1 DiT Guidance & Negative Prompting**:
-  - At `CFG = 1.0`, `TextEncodeQwenImage21` / KSampler evaluates only the unconditional/positive path and completely ignores `negative_prompt`.
-  - In cross-ethnic or body-build swaps, `CFG = 1.0` causes regressions where hands, chest skin, and body frame of `<image1>` are retained despite face swapping.
-  - Raising `CFG = 1.8` activates negative guidance, reliably suppressing mismatched hand/chest skin tones and enforcing full-body physique transfer.
-- **Outfit Preservation on Real-World Backgrounds**:
-  - Against environmental/real-world backgrounds, multimodal DiTs tend to transfer casual clothes (e.g. t-shirts) from `<image2>`.
-  - Always enforce in the positive prompt that the subject wears the exact outfit and pose from `<image1>`, and explicitly suppress `clothing from <image2>, t-shirt, casual clothing` in the negative prompt.
+- **Qwen 2.1 DiT Guidance & Prompt Best Practices**:
+  - Qwen Image 2.1 uses rectified flow matching with Euler sampler and simple scheduler.
+  - Native inference operates at `CFG = 1.0` with `negative_prompt = ""` (pure conditional velocity field evaluation, 25 steps = 25 passes).
+  - Raising `CFG > 1.0` with detailed negative prompts triggers cross-attention crosstalk ("pink elephant" effect) where tokens from `<image2>` (e.g. casual tank tops, t-shirts) inadvertently contaminate the scene, stripping away campaign garments.
+  - Concise, direct relational instructions ("The entire person from <image2> is now wearing the exact clothing and outfit from <image1> and adopting the exact pose from <image1>") achieve perfect identity, skin tone, and physique transfer while preserving 100% of clothing, pose, and background.
 - **Deterministic Output Naming**:
   - Output files are generated strictly as `<campaign_stem>_<model_stem>.png`.
   - Never use static market tags (`campaign_global_*`) in batch runners, as subsequent lookbooks will silently overwrite earlier runs.
@@ -46,7 +44,7 @@
 - **Memory Management**: Send `POST /free` (`{"unload_models": False, "free_memory": True}`) between batch iterations to clear PyTorch CUDA caches without checkpoint reload latency.
 
 ## Available Workflow Templates
-- `workflows/model_swap_qwen21_maskless_api.json`: **Flagship** multimodal maskless instruction-based editing workflow using native `TextEncodeQwenImage21` with V3 Autogrow (`images.image_1`, `images.image_2`) and Euler/Simple sampler at CFG 1.8, preserving 100% of garments and real-world backgrounds from `<image1>` with full-body anatomical and skin tone transfer.
+- `workflows/model_swap_qwen21_maskless_api.json`: **Flagship** multimodal maskless instruction-based editing workflow using native `TextEncodeQwenImage21` with V3 Autogrow (`images.image_1`, `images.image_2`) and Euler/Simple sampler at native CFG 1.0, preserving 100% of garments, pose, and background from `<image1>` while seamlessly transferring the full person from `<image2>`.
 - `workflows/model_swap_api.json`: SDXL inpainting fallback graph with IP-Adapter identity conditioning and attention mask.
 - `workflows/model_swap_auto_mask_api.json`: Autonomous self-masking workflow using on-the-fly BiRefNet foreground segmentation (zero external masks required).
 - `workflows/model_swap_composite_api.json`: Live integration verification workflow using `ImageCompositeMasked` (instant CPU/GPU pipeline execution).
