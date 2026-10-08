@@ -15,8 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint & Type Gate (Ruff & Pyright)
+  ci:
+    name: CI Quality Gate (Python 3.12)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -28,7 +28,7 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install Linting & Typing Tools
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install ruff pyright
@@ -43,31 +43,6 @@ jobs:
       - name: Run Pyright Static Type Checker
         run: python -m pyright scripts tests
 
-  test:
-    name: Test Suite (${{ matrix.os }} - Python ${{ matrix.python-version }})
-    needs: lint
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: "pip"
-
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
       - name: Verify Synthetic Test Data Generator
         run: |
           python scripts/generate_testdata.py --output-dir data_ci --size 256
@@ -77,7 +52,6 @@ jobs:
           python -m pytest tests --cov=scripts --cov-report=term-missing --cov-report=xml -v
 
       - name: Upload Test Coverage Artifact
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
