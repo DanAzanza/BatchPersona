@@ -318,10 +318,18 @@ def launch_server(
 
         if sys.platform == "win32":
             # SW_MINIMIZE keeps the window out of the way while giving it a valid console
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = 6  # SW_MINIMIZE
-            creationflags = subprocess.CREATE_NEW_CONSOLE | subprocess.CREATE_NEW_PROCESS_GROUP
+            startupinfo = None
+            startupinfo_cls = getattr(subprocess, "STARTUPINFO", None)
+            if startupinfo_cls is not None:
+                startupinfo = startupinfo_cls()
+                use_show_window = getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+                if use_show_window:
+                    startupinfo.dwFlags |= use_show_window
+                startupinfo.wShowWindow = 6  # SW_MINIMIZE
+
+            creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0) | getattr(
+                subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+            )
             subprocess.Popen(
                 cmd,
                 cwd=cwd,
@@ -343,7 +351,8 @@ def launch_server(
             "[NOTICE] If the desktop window opens on the dashboard, please click 'Launch' or 'Open' on your instance."
         )
         if sys.platform == "win32":
-            subprocess.Popen([str(instance.gui_exe)], creationflags=subprocess.DETACHED_PROCESS)
+            detached = getattr(subprocess, "DETACHED_PROCESS", 0)
+            subprocess.Popen([str(instance.gui_exe)], creationflags=detached)
         else:
             subprocess.Popen([str(instance.gui_exe)], start_new_session=True)
     else:
