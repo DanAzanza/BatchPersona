@@ -304,11 +304,17 @@ def launch_server(
         host, port = server, "8000"
 
     if instance.mode == "headless":
+        if not instance.python_exe or not instance.main_py:
+            print(f"[ERROR] Headless instance '{instance.name}' is missing python_exe or main_py.")
+            return False
+
+        python_exe = instance.python_exe
+        main_py = instance.main_py
         cmd = build_headless_command(instance, host, port)
         print(f"[LAUNCH] Starting headless ComfyUI backend ({instance.name})...")
-        print(f"         Command: {instance.python_exe} {instance.main_py.name}")
+        print(f"         Command: {python_exe} {main_py.name}")
 
-        cwd = str(instance.working_dir) if instance.working_dir else str(instance.main_py.parent)
+        cwd = str(instance.working_dir) if instance.working_dir else str(main_py.parent)
 
         if sys.platform == "win32":
             # SW_MINIMIZE keeps the window out of the way while giving it a valid console

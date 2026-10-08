@@ -355,6 +355,15 @@ def test_launch_server_unsupported_mode() -> None:
         assert launch_server(instance, "127.0.0.1:8000") is False
 
 
+def test_launch_server_headless_missing_paths() -> None:
+    """Verify launch_server returns False if headless instance is missing python_exe or main_py."""
+    with patch("scripts.launch_comfyui.is_server_online", return_value=False):
+        instance = ComfyInstance(
+            name="MissingPaths", mode="headless", python_exe=None, main_py=None
+        )
+        assert launch_server(instance, "127.0.0.1:8000") is False
+
+
 def test_cli_main_check_and_detect() -> None:
     """Verify main() CLI flags --check and --detect."""
     # --check online

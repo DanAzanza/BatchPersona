@@ -168,6 +168,7 @@ def test_run_all_ci_stages_orchestration(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert code == 0
     assert "Ruff Linter" in called_stages
     assert "Ruff Formatter" in called_stages
+    assert "Pyright Static Type Checker" in called_stages
     assert "CI Synthetic Data Generator" in called_stages
     assert "Pytest Regression Suite" in called_stages
 
@@ -176,6 +177,7 @@ def test_run_all_ci_stages_orchestration(monkeypatch: pytest.MonkeyPatch, tmp_pa
     code = run_all_ci_stages(python_executable="python", skip_lint=True, skip_tests=True)
     assert code == 0
     assert "Ruff Linter" not in called_stages
+    assert "Pyright Static Type Checker" not in called_stages
     assert "Pytest Regression Suite" not in called_stages
     assert "CI Synthetic Data Generator" in called_stages
 

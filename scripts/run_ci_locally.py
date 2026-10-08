@@ -3,8 +3,9 @@
 Executes all CI verification stages deterministically on the local developer machine:
 1. Ruff static linting gate
 2. Ruff code formatting verification
-3. Synthetic test dataset generation (256x256 CI smoke test)
-4. Pytest regression suite with branch test coverage
+3. Pyright static type checking
+4. Synthetic test dataset generation (256x256 CI smoke test)
+5. Pytest regression suite with branch test coverage
 """
 
 from __future__ import annotations
@@ -74,7 +75,12 @@ def run_all_ci_stages(
         if not run_stage("Ruff Formatter", format_cmd):
             return 1
 
-    # Stage 3: CI Synthetic Test Data Generation Smoke Test
+        # Stage 3: Pyright Static Type Checker
+        type_cmd = [python_executable, "-m", "pyright", "scripts", "tests"]
+        if not run_stage("Pyright Static Type Checker", type_cmd):
+            return 1
+
+    # Stage 4: CI Synthetic Test Data Generation Smoke Test
     ci_gen_cmd = [
         python_executable,
         "scripts/generate_testdata.py",

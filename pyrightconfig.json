@@ -1,0 +1,15 @@
+{
+  "include": ["scripts", "tests"],
+  "exclude": ["**/__pycache__", ".pytest_cache", ".venv", ".ci_local_staging"],
+  "pythonVersion": "3.10",
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
+  "reportCallIssue": "error",
+  "reportAssignmentType": "none",
+  "reportArgumentType": "none",
+  "reportInvalidTypeForm": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportOptionalCall": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportGeneralTypeIssues": "none"
+}
