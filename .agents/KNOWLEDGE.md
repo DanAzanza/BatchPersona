@@ -50,6 +50,8 @@
 - `workflows/model_swap_composite_api.json`: Live integration verification workflow using `ImageCompositeMasked` (instant CPU/GPU pipeline execution).
 
 ## Verification & Test Commands
+- Unified Cross-Platform Pipeline Orchestrator: `python -m scripts.run_pipeline`
+- Automated ComfyUI Server Healthcheck & Launcher: `python scripts/launch_comfyui.py --check` / `--detect` / `--launch`
 - Fast test suite with coverage: `python -m pytest tests --cov=scripts --cov-report=term-missing -v`
 - Full local CI Quality Gate: `python scripts/run_ci_locally.py`
 - Code formatting & linting: `python -m ruff check .` and `python -m ruff format --check .`
