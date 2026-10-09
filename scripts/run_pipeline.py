@@ -24,7 +24,12 @@ if sys.platform == "win32":
     if callable(reconfig_stderr):
         reconfig_stderr(encoding="utf-8")
 
-from scripts.launch_comfyui import (
+# Ensure repository root is on sys.path when executed directly as a script
+REPO_ROOT: Path = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.launch_comfyui import (  # noqa: E402
     detect_comfyui,
     is_server_online,
     launch_server,

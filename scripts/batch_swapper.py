@@ -21,10 +21,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
-import requests
-import websocket
-
-from scripts.housekeeper import ComfyUIHousekeeper, create_housekeeper
+# Ensure repository root is on sys.path when executed directly as a script
+REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 # Ensure Windows terminal standard streams handle UTF-8 properly
 if sys.platform == "win32":
@@ -34,6 +34,11 @@ if sys.platform == "win32":
     reconfig_stderr = getattr(sys.stderr, "reconfigure", None)
     if callable(reconfig_stderr):
         reconfig_stderr(encoding="utf-8")
+
+import requests  # noqa: E402
+import websocket  # noqa: E402
+
+from scripts.housekeeper import ComfyUIHousekeeper, create_housekeeper  # noqa: E402
 
 LOGGER = logging.getLogger("batch_swapper")
 
