@@ -24,6 +24,8 @@ from typing import Any, Final
 import requests
 import websocket
 
+from scripts.housekeeper import ComfyUIHousekeeper, create_housekeeper
+
 # Ensure Windows terminal standard streams handle UTF-8 properly
 if sys.platform == "win32":
     reconfig_stdout = getattr(sys.stdout, "reconfigure", None)
@@ -84,6 +86,9 @@ class SwapperConfig:
     timeout_seconds: float = 300.0
     model_filter: str = "*"
     validate_paths: bool = True
+    cleanup: bool = True
+    comfy_input_dir: Path | None = None
+    comfy_output_dir: Path | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration paths and parameters fail-fast."""
@@ -470,10 +475,17 @@ class BatchSwapper:
         config: SwapperConfig,
         client: ComfyUIClient | None = None,
         template: WorkflowTemplate | None = None,
+        housekeeper: ComfyUIHousekeeper | None = None,
     ) -> None:
         self._config = config
         self._client = client or ComfyUIClient(config.server_address)
         self._template = template or WorkflowTemplate.load_from_file(config.workflow_path)
+        self._housekeeper = housekeeper or create_housekeeper(
+            server_address=config.server_address,
+            enabled=config.cleanup,
+            input_dir=config.comfy_input_dir,
+            output_dir=config.comfy_output_dir,
+        )
 
     def _resolve_mask_path(self) -> Path | None:
         """Resolve mask path explicitly or via automatic matching pattern."""
@@ -538,9 +550,12 @@ class BatchSwapper:
             output_prefix,
         )
 
+        model_asset_name: str | None = None
         try:
             # 1. Upload model reference asset
+            self._housekeeper.record_pre_upload(model_file.name)
             model_asset_name = self._client.upload_image(model_file)
+            self._housekeeper.record_uploaded_name(model_asset_name)
 
             # 2. Patch workflow graph
             prompt_payload = self._template.patch(
@@ -573,6 +588,14 @@ class BatchSwapper:
             primary_asset = outputs[0]
             final_target = self._config.output_dir / f"{output_prefix}.png"
             self._client.download_image(primary_asset, final_target)
+
+            # 6. Housekeeping: Purge duplicate output asset from ComfyUI directory
+            self._housekeeper.cleanup_output_asset(
+                asset_filename=primary_asset.filename,
+                asset_subfolder=primary_asset.subfolder,
+                final_target=final_target,
+            )
+
             elapsed = time.time() - job_start
 
             LOGGER.info(
@@ -617,6 +640,8 @@ class BatchSwapper:
             )
         finally:
             self._client.free_memory(unload_models=is_oom)
+            if model_asset_name:
+                self._housekeeper.cleanup_model_input(model_asset_name, model_file)
 
     def run_batch(self) -> list[JobResult]:
         """Execute model swap pipeline sequentially across all portraits."""
@@ -651,15 +676,20 @@ class BatchSwapper:
 
         # Ingest campaign base image
         LOGGER.info("Ingesting base campaign asset: %s", self._config.campaign_path)
+        self._housekeeper.record_pre_upload(self._config.campaign_path.name)
         campaign_asset_name = self._client.upload_image(self._config.campaign_path)
+        self._housekeeper.record_uploaded_name(campaign_asset_name)
 
         # Ingest inpainting mask if required or auto-detected
         mask_asset_name: str | None = None
+        mask_file: Path | None = None
         if self._template.requires_mask():
             mask_file = self._resolve_mask_path()
             if mask_file is not None and mask_file.is_file():
                 LOGGER.info("Ingesting inpainting mask: %s", mask_file)
+                self._housekeeper.record_pre_upload(mask_file.name)
                 mask_asset_name = self._client.upload_image(mask_file)
+                self._housekeeper.record_uploaded_name(mask_asset_name)
             else:
                 LOGGER.warning(
                     "Workflow expects mask placeholder, but no matching mask found for %s",
@@ -671,21 +701,29 @@ class BatchSwapper:
             )
 
         results: list[JobResult] = []
-        for index, model_path in enumerate(model_files, start=1):
-            LOGGER.info(
-                "\n%s=== Processing Asset [%d/%d]: %s ===%s",
-                COLOR_BOLD,
-                index,
-                len(model_files),
-                model_path.name,
-                COLOR_RESET,
+        try:
+            for index, model_path in enumerate(model_files, start=1):
+                LOGGER.info(
+                    "\n%s=== Processing Asset [%d/%d]: %s ===%s",
+                    COLOR_BOLD,
+                    index,
+                    len(model_files),
+                    model_path.name,
+                    COLOR_RESET,
+                )
+                res = self.process_single_model(
+                    model_file=model_path,
+                    campaign_asset_name=campaign_asset_name,
+                    mask_asset_name=mask_asset_name,
+                )
+                results.append(res)
+        finally:
+            self._housekeeper.cleanup_shared_inputs(
+                [
+                    (campaign_asset_name, self._config.campaign_path),
+                    (mask_asset_name, mask_file),
+                ]
             )
-            res = self.process_single_model(
-                model_file=model_path,
-                campaign_asset_name=campaign_asset_name,
-                mask_asset_name=mask_asset_name,
-            )
-            results.append(res)
 
         self._print_batch_summary(results)
         return results
@@ -770,6 +808,25 @@ def parse_cli_args(args: Sequence[str] | None = None) -> argparse.Namespace:
         default="*",
         help="Glob pattern to filter models inside --models-dir (default: '*')",
     )
+    parser.add_argument(
+        "--no-cleanup",
+        dest="cleanup",
+        action="store_false",
+        default=True,
+        help="Disable automatic purging of intermediate ComfyUI assets",
+    )
+    parser.add_argument(
+        "--comfy-input-dir",
+        default=None,
+        type=Path,
+        help="Override ComfyUI input directory path for housekeeping",
+    )
+    parser.add_argument(
+        "--comfy-output-dir",
+        default=None,
+        type=Path,
+        help="Override ComfyUI output directory path for housekeeping",
+    )
     return parser.parse_args(args)
 
 
@@ -788,6 +845,9 @@ def main() -> None:
         workflow_path=args.workflow,
         timeout_seconds=args.timeout,
         model_filter=args.filter,
+        cleanup=args.cleanup,
+        comfy_input_dir=args.comfy_input_dir,
+        comfy_output_dir=args.comfy_output_dir,
     )
 
     swapper = BatchSwapper(config)

@@ -35,7 +35,7 @@
     "class_type": "TextEncodeQwenImage21",
     "inputs": {
       "clip": ["4", 0],
-      "prompt": "In <image1>, replace the person with the model from <image2>. The entire person from <image2> is now wearing the exact clothing and outfit from <image1> and adopting the exact pose from <image1>. Keep all clothing, garments, tailoring, shoes, accessories, pose, and background from <image1> completely unchanged. Do not transfer any clothing from <image2>. Photorealistic commercial fashion catalog photograph.",
+      "prompt": "In <image1>, replace the person with the target reference model from <image2>. The person in <image2> is now wearing the exact clothing and outfit from <image1>. Keep all clothing, garments, tailoring, shoes, accessories, pose, and studio background from <image1> completely unchanged. Do not transfer any clothing or footwear from <image2>. Only transfer the face, facial features, hair, skin tone, and identity of the model in <image2>. Photorealistic high-end commercial fashion lookbook photograph.",
       "negative_prompt": "",
       "resolution": 1024,
       "images.image_1": ["1", 0],

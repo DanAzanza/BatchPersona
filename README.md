@@ -8,7 +8,7 @@
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%2F%20WebSocket-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Architecture: DiT](https://img.shields.io/badge/Diffusion-Qwen%20Image%202.1%20DiT-purple.svg)](docs/ARCHITECTURE.md)
 [![Coverage: 91% Branch](https://img.shields.io/badge/test%20coverage-91%25%20branch-brightgreen.svg)](tests/)
-[![Tests: 55 Passed](https://img.shields.io/badge/tests-55%20passed-success.svg)](tests/)
+[![Tests: 108 Passed](https://img.shields.io/badge/tests-108%20passed-success.svg)](tests/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -125,6 +125,7 @@ sequenceDiagram
 * **Fail-Fast Configuration**: `SwapperConfig` validates file existence, directory access, and timeout bounds immediately at initialization, avoiding runtime failures halfway through a batch.
 * **Deadlock-Free WebSockets**: `track_execution` enforces non-blocking socket timeouts (`ws.settimeout(min(2.0, remaining))`) with overall wall-clock deadlines to prevent infinite hangs if the ComfyUI backend stalls.
 * **OOM & Memory Management**: Between batch iterations, the client invokes `/free` with PyTorch CUDA cache clearing. In the event of CUDA Out-Of-Memory errors, it triggers full model eviction (`unload_models=True`) before continuing.
+* **Smart Local Housekeeping**: Safely purges intermediate uploads and generated outputs from ComfyUI directories to prevent storage bloat, protected by canonical path checks, pre-existing asset guards, and Windows lock retries.
 * **Atomic File Writes**: Image assets are streamed to unique temporary staging files (`.part`) and atomically replaced into the target directory to prevent truncated assets during crashes or network interruptions.
 * **CI-Aware Progress Logging**: Automatically senses interactive TTY vs. headless CI environments, toggling between an in-place ANSI progress bar and clean 25% milestone logging to eliminate log pollution.
 
@@ -158,11 +159,17 @@ BatchPersona/
 │   ├── __init__.py              # Package marker
 │   ├── batch_swapper.py         # Headless REST/WebSocket orchestrator
 │   ├── generate_testdata.py     # Pure Python synthetic lookbook/portrait generator
+│   ├── housekeeper.py           # Smart local housekeeping & storage de-duplication
+│   ├── launch_comfyui.py        # Automated headless ComfyUI server detector & launcher
 │   ├── prepare_fullbody_dataset.py # Centering-aware dataset preprocessor (ImageOps.fit)
-│   └── run_ci_locally.py        # Local CI parity orchestrator (Ruff, Gen, Tests)
+│   ├── run_ci_locally.py        # Local CI parity orchestrator (Ruff, Gen, Tests)
+│   └── run_pipeline.py          # Interactive menu & campaign batch runner
 ├── tests/
 │   ├── test_batch_swapper.py    # Unit & integration test suite (47 tests)
-│   └── test_ci_parity.py        # CI parity, requirements, AST compatibility (8 tests)
+│   ├── test_ci_parity.py        # CI parity, requirements, AST compatibility (8 tests)
+│   ├── test_housekeeper.py      # Storage housekeeping & safety guard tests (10 tests)
+│   ├── test_launch_comfyui.py   # Server launcher & desktop detection tests (25 tests)
+│   └── test_run_pipeline.py     # Pipeline runner orchestration tests (18 tests)
 ├── install.bat                  # ⚡ Windows 1-Click Environment Setup & Self-Test
 ├── install.sh                   # ⚡ Linux/macOS 1-Click Environment Setup & Self-Test
 ├── run_pipeline.bat             # 🚀 Windows Interactive Management & Batch Runner
@@ -278,12 +285,15 @@ batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models
 | `--mask` | `Path` | `None` | Path to optional manual segmentation mask. |
 | `--filter` | `str` | `*` | Glob pattern to filter models inside `--models-dir` (e.g. `*east_asia*`). |
 | `--timeout` | `float` | `300.0` | Execution timeout in seconds per individual asset. |
+| `--no-cleanup` | `flag` | `False` | Disable automatic purging of intermediate ComfyUI assets. |
+| `--comfy-input-dir` | `Path` | `None` | Override ComfyUI input directory path for housekeeping. |
+| `--comfy-output-dir` | `Path` | `None` | Override ComfyUI output directory path for housekeeping. |
 
 ---
 
 ## 🧪 Verification & Test Suite
 
-The automated test suite provides **91% branch coverage (55 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
+The automated test suite provides **91% branch coverage (108 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
 
 Run the complete test suite with coverage report:
 
@@ -312,13 +322,16 @@ This sequentially runs:
 Name                                  Stmts   Miss Branch BrPart  Cover   Missing
 ---------------------------------------------------------------------------------
 scripts\__init__.py                       0      0      0      0   100%
-scripts\batch_swapper.py                399     32    130     22    89%   ...
-scripts\generate_testdata.py            166      2      6      1    98%   ...
-scripts\prepare_fullbody_dataset.py      81      6     36      7    89%   ...
-scripts\run_ci_locally.py                66      6     22      6    86%   ...
+scripts\batch_swapper.py                418     31    128     21    90%   ...
+scripts\generate_testdata.py            164      1      4      0    99%   ...
+scripts\housekeeper.py                  132      7     66      9    92%   ...
+scripts\launch_comfyui.py               253     16    118     20    90%   ...
+scripts\prepare_fullbody_dataset.py      79      5     34      6    90%   ...
+scripts\run_ci_locally.py                67      6     22      6    87%   ...
+scripts\run_pipeline.py                 125      4     42      5    95%   ...
 ---------------------------------------------------------------------------------
-TOTAL                                   712     46    194     36    91%
-Required test coverage of 90.0% reached. Total coverage: 90.73%
+TOTAL                                  1238     70    414     67    91%
+Required test coverage of 90.0% reached. Total coverage: 91.46%
 ```
 
 ### Linting & Static Typing Quality Gate
