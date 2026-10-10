@@ -33,25 +33,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install ruff pyright
           pip install -r requirements.txt
+          pip install -e .
 
-      - name: Run Ruff Linter
-        run: python -m ruff check .
-
-      - name: Run Ruff Format Check
-        run: python -m ruff format --check .
-
-      - name: Run Pyright Static Type Checker
-        run: python -m pyright scripts tests
-
-      - name: Verify Synthetic Test Data Generator
-        run: |
-          python scripts/generate_testdata.py --output-dir data_ci --size 256
-
-      - name: Run Automated Test Suite with Coverage
-        run: |
-          python -m pytest tests --cov=scripts --cov-report=term-missing --cov-report=xml -v
+      - name: Run Full Quality Gate (CI Parity)
+        run: python scripts/run_ci_locally.py
 
       - name: Upload Test Coverage Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report

@@ -114,6 +114,7 @@ def run_all_ci_stages(
             "--cov=batchpersona",
             "--cov=scripts",
             "--cov-report=term-missing",
+            "--cov-report=xml",
             "-v",
         ]
         if not stage_runner("Pytest Regression Suite", test_cmd):

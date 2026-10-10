@@ -125,11 +125,10 @@ def test_ci_workflow_yaml_file_integrity() -> None:
     assert ci_yaml.is_file(), "CI workflow .github/workflows/ci.yml must exist"
 
     content = ci_yaml.read_text(encoding="utf-8")
-    assert "scripts/generate_testdata.py" in content
+    assert "scripts/run_ci_locally.py" in content
     assert "requirements.txt" in content
     assert "python-version" in content
-    assert "ruff check ." in content
-    assert "ruff format --check ." in content
+    assert "pip install -e ." in content
 
 
 def test_run_stage_success_and_failure(monkeypatch: pytest.MonkeyPatch) -> None:
