@@ -66,11 +66,19 @@ def test_requirements_dependencies_complete() -> None:
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     top_pkg = alias.name.split(".")[0].lower()
-                    if top_pkg not in stdlib_modules and top_pkg not in {"scripts", "tests"}:
+                    if top_pkg not in stdlib_modules and top_pkg not in {
+                        "scripts",
+                        "tests",
+                        "batchpersona",
+                    }:
                         third_party_imports.add(top_pkg)
             elif isinstance(node, ast.ImportFrom) and node.module:
                 top_pkg = node.module.split(".")[0].lower()
-                if top_pkg not in stdlib_modules and top_pkg not in {"scripts", "tests"}:
+                if top_pkg not in stdlib_modules and top_pkg not in {
+                    "scripts",
+                    "tests",
+                    "batchpersona",
+                }:
                     third_party_imports.add(top_pkg)
 
     for imp in third_party_imports:
@@ -210,8 +218,8 @@ def test_python_310_compatibility() -> None:
         "TypeVarTuple",
         "reveal_type",
     }
-    for folder in [REPO_ROOT / "scripts", REPO_ROOT / "tests"]:
-        for py_path in folder.glob("*.py"):
+    for folder in [REPO_ROOT / "src", REPO_ROOT / "scripts", REPO_ROOT / "tests"]:
+        for py_path in folder.rglob("*.py"):
             tree = ast.parse(py_path.read_text(encoding="utf-8"), filename=str(py_path))
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module == "typing":
@@ -220,3 +228,59 @@ def test_python_310_compatibility() -> None:
                             f"{py_path.name} imports '{alias.name}' from typing, "
                             f"which breaks Python 3.10 compatibility"
                         )
+
+
+def test_backward_compatibility_shims() -> None:
+    """Verify that all scripts/ shims export expected symbols and forward to batchpersona."""
+    import scripts.batch_swapper as shim_swapper
+    import scripts.generate_testdata as shim_generator
+    import scripts.housekeeper as shim_housekeeper
+    import scripts.launch_comfyui as shim_launcher
+    import scripts.prepare_fullbody_dataset as shim_preprocess
+    import scripts.run_ci_locally as shim_ci
+    import scripts.run_pipeline as shim_pipeline
+
+    assert hasattr(shim_launcher, "detect_comfyui")
+    assert hasattr(shim_launcher, "launch_server")
+    assert hasattr(shim_launcher, "is_server_online")
+    assert hasattr(shim_launcher, "ComfyInstance")
+    assert hasattr(shim_pipeline, "interactive_menu_loop")
+    assert hasattr(shim_pipeline, "run_commercial_swap")
+    assert hasattr(shim_pipeline, "ensure_server_ready")
+    assert hasattr(shim_swapper, "BatchSwapper")
+    assert hasattr(shim_swapper, "SwapperConfig")
+    assert hasattr(shim_swapper, "JobStatus")
+    assert hasattr(shim_housekeeper, "ComfyUIHousekeeper")
+    assert hasattr(shim_generator, "generate_all_testdata")
+    assert hasattr(shim_preprocess, "process_dataset")
+    assert hasattr(shim_ci, "run_all_ci_stages")
+
+
+def test_run_all_ci_stages_staging_missing_asset(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verify run_all_ci_stages returns 1 when an expected asset is missing."""
+    staging = tmp_path / "ci_staging"
+    staging.mkdir()
+    # Missing all lookbook assets
+
+    def mock_run_stage(stage_name: str, cmd: list[str], cwd: Path | None = None) -> bool:
+        return True
+
+    code = run_all_ci_stages(
+        python_executable="python",
+        skip_lint=True,
+        skip_tests=True,
+        run_stage_fn=mock_run_stage,
+        staging_dir=staging,
+    )
+    assert code == 1
+
+
+def test_ci_main_direct(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify ci_main dispatches to run_all_ci_stages with verbose logging."""
+    monkeypatch.setattr(
+        "batchpersona.ci.run_all_ci_stages",
+        lambda *args, **kwargs: 0,
+    )
+    assert ci_main(["--skip-lint", "--skip-tests", "-v"]) == 0

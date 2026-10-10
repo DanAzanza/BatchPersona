@@ -1185,3 +1185,310 @@ def test_parse_cli_args_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("COMFYUI_SERVER", "192.168.1.50:8000")
     args = parse_cli_args(["--campaign", "c.png", "--models-dir", "m"])
     assert args.server == "192.168.1.50:8000"
+
+
+def test_parse_cli_args_new_overrides() -> None:
+    """Verify parse_cli_args supports --skip-existing, --force, --seed, --resolution, --prompt."""
+    cli_args = [
+        "--campaign",
+        "c.png",
+        "--models-dir",
+        "models",
+        "--skip-existing",
+        "--force",
+        "--seed",
+        "424242",
+        "--resolution",
+        "1024",
+        "--prompt",
+        "A high fashion lookbook model",
+    ]
+    parsed = parse_cli_args(cli_args)
+    assert parsed.skip_existing is True
+    assert parsed.force is True
+    assert parsed.seed == 424242
+    assert parsed.resolution == 1024
+    assert parsed.prompt == "A high fashion lookbook model"
+
+
+def test_workflow_template_seed_resolution_prompt_overrides() -> None:
+    """Verify type-safe injection of seed, resolution, and prompt with token preservation."""
+    sample_graph = {
+        "1": {"class_type": "LoadImage", "inputs": {"image": "{{CAMPAIGN_IMG}}"}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": "{{MODEL_IMG}}"}},
+        "3": {
+            "class_type": "KSampler",
+            "inputs": {"seed": 100, "steps": 20, "cfg": 7.0},
+        },
+        "4": {
+            "class_type": "TextEncodeQwenImage21",
+            "inputs": {
+                "prompt": "original prompt",
+                "resolution": 512,
+            },
+        },
+        "5": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "photorealistic portrait, beautiful lighting"},
+        },
+        "6": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "blurry, low quality, bad anatomy, artifacts"},
+        },
+        "7": {"class_type": "SaveImage", "inputs": {"filename_prefix": "{{OUTPUT_PREFIX}}"}},
+    }
+    template = WorkflowTemplate(sample_graph)
+    patched = template.patch(
+        campaign_image_name="camp.png",
+        model_image_name="model.png",
+        output_prefix="out_test",
+        seed=999999,
+        resolution=1024,
+        prompt="Studio lighting, 8k portrait",
+    )
+
+    # 1. KSampler seed is typed int
+    assert patched["3"]["inputs"]["seed"] == 999999
+    assert isinstance(patched["3"]["inputs"]["seed"], int)
+
+    # 2. TextEncodeQwenImage21 resolution is typed int
+    assert patched["4"]["inputs"]["resolution"] == 1024
+    assert isinstance(patched["4"]["inputs"]["resolution"], int)
+
+    # 3. TextEncodeQwenImage21 prompt preserves <image1> and <image2> tokens
+    qwen_prompt = patched["4"]["inputs"]["prompt"]
+    assert "<image1>" in qwen_prompt
+    assert "<image2>" in qwen_prompt
+    assert "Studio lighting, 8k portrait" in qwen_prompt
+
+    # 4. CLIP positive prompt is replaced, but negative prompt is preserved
+    assert patched["5"]["inputs"]["text"] == "Studio lighting, 8k portrait"
+    assert "blurry, low quality" in patched["6"]["inputs"]["text"]
+
+
+def test_batch_swapper_skip_existing_all_skipped(tmp_path: Path) -> None:
+    """Verify that when --skip-existing is set and all files exist, no server calls occur."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "m1.png").write_bytes(b"model1")
+    (models_dir / "m2.png").write_bytes(b"model2")
+
+    campaign_file = tmp_path / "camp.png"
+    campaign_file.write_bytes(b"camp")
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    # Pre-create output files
+    (output_dir / "camp_m1.png").write_bytes(b"already_rendered_1")
+    (output_dir / "camp_m2.png").write_bytes(b"already_rendered_2")
+
+    wf = tmp_path / "wf.json"
+    wf.write_text(json.dumps({"1": {"class_type": "LoadImage", "inputs": {}}}), encoding="utf-8")
+
+    config = SwapperConfig(
+        server_address="127.0.0.1:8188",
+        campaign_path=campaign_file,
+        models_dir=models_dir,
+        output_dir=output_dir,
+        workflow_path=wf,
+        skip_existing=True,
+    )
+    mock_client = MagicMock(spec=ComfyUIClient)
+
+    swapper = BatchSwapper(config=config, client=mock_client)
+    results = swapper.run_batch()
+
+    assert len(results) == 2
+    assert all(r.status == JobStatus.SKIPPED for r in results)
+    assert all(r.duration_seconds == 0.0 for r in results)
+    # Server should never be contacted or queried
+    assert mock_client.check_connection.call_count == 0
+    assert mock_client.upload_image.call_count == 0
+    assert mock_client.queue_prompt.call_count == 0
+
+
+def test_batch_swapper_skip_existing_partial(tmp_path: Path) -> None:
+    """Verify that only existing files are skipped while missing ones are rendered."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "m_exist.png").write_bytes(b"model_exist")
+    (models_dir / "m_new.png").write_bytes(b"model_new")
+
+    campaign_file = tmp_path / "camp.png"
+    campaign_file.write_bytes(b"camp")
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    # m_exist already exists
+    (output_dir / "camp_m_exist.png").write_bytes(b"existing_data")
+
+    wf = tmp_path / "wf.json"
+    wf_graph = {
+        "1": {"class_type": "LoadImage", "inputs": {"image": "{{CAMPAIGN_IMG}}"}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": "{{MODEL_IMG}}"}},
+        "3": {"class_type": "SaveImage", "inputs": {"filename_prefix": "{{OUTPUT_PREFIX}}"}},
+    }
+    wf.write_text(json.dumps(wf_graph), encoding="utf-8")
+
+    config = SwapperConfig(
+        server_address="127.0.0.1:8188",
+        campaign_path=campaign_file,
+        models_dir=models_dir,
+        output_dir=output_dir,
+        workflow_path=wf,
+        skip_existing=True,
+    )
+    mock_client = MagicMock(spec=ComfyUIClient)
+    mock_client.check_connection.return_value = True
+    mock_client.upload_image.side_effect = lambda path: f"uploaded_{path.name}"
+    mock_client.queue_prompt.return_value = "prompt-123"
+    mock_client.track_execution.return_value = [
+        OutputAsset(filename="out.png", subfolder="", image_type="output")
+    ]
+
+    def mock_download(asset: OutputAsset, destination: Path) -> None:
+        destination.write_bytes(b"newly_rendered")
+
+    mock_client.download_image.side_effect = mock_download
+
+    swapper = BatchSwapper(config=config, client=mock_client)
+    results = swapper.run_batch()
+
+    assert len(results) == 2
+    status_by_model = {r.model_name: r.status for r in results}
+    assert status_by_model["m_exist.png"] == JobStatus.SKIPPED
+    assert status_by_model["m_new.png"] == JobStatus.SUCCESS
+
+    # Only m_new was uploaded as a model
+    uploaded_names = [call[0][0].name for call in mock_client.upload_image.call_args_list]
+    assert "camp.png" in uploaded_names
+    assert "m_new.png" in uploaded_names
+    assert "m_exist.png" not in uploaded_names
+
+
+def test_batch_swapper_force_overrides_skip_existing(tmp_path: Path) -> None:
+    """Verify --force forces re-rendering even if output exists."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "m.png").write_bytes(b"model")
+
+    campaign_file = tmp_path / "camp.png"
+    campaign_file.write_bytes(b"camp")
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    (output_dir / "camp_m.png").write_bytes(b"old_data")
+
+    wf = tmp_path / "wf.json"
+    wf_graph = {
+        "1": {"class_type": "LoadImage", "inputs": {"image": "{{CAMPAIGN_IMG}}"}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": "{{MODEL_IMG}}"}},
+        "3": {"class_type": "SaveImage", "inputs": {"filename_prefix": "{{OUTPUT_PREFIX}}"}},
+    }
+    wf.write_text(json.dumps(wf_graph), encoding="utf-8")
+
+    config = SwapperConfig(
+        server_address="127.0.0.1:8188",
+        campaign_path=campaign_file,
+        models_dir=models_dir,
+        output_dir=output_dir,
+        workflow_path=wf,
+        skip_existing=True,
+        force=True,
+    )
+    mock_client = MagicMock(spec=ComfyUIClient)
+    mock_client.check_connection.return_value = True
+    mock_client.upload_image.return_value = "up.png"
+    mock_client.queue_prompt.return_value = "prompt-id"
+    mock_client.track_execution.return_value = [
+        OutputAsset(filename="out.png", subfolder="", image_type="output")
+    ]
+
+    swapper = BatchSwapper(config=config, client=mock_client)
+    results = swapper.run_batch()
+
+    assert len(results) == 1
+    assert results[0].status == JobStatus.SUCCESS
+    assert mock_client.queue_prompt.call_count == 1
+
+
+def test_batch_swapper_skip_existing_corrupt_file_rerendered(tmp_path: Path) -> None:
+    """Verify that a 0-byte corrupt file is NOT skipped when --skip-existing is set."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "m.png").write_bytes(b"model")
+
+    campaign_file = tmp_path / "camp.png"
+    campaign_file.write_bytes(b"camp")
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    # 0-byte empty file simulating broken/interrupted write
+    (output_dir / "camp_m.png").touch()
+    assert (output_dir / "camp_m.png").stat().st_size == 0
+
+    wf = tmp_path / "wf.json"
+    wf_graph = {
+        "1": {"class_type": "LoadImage", "inputs": {"image": "{{CAMPAIGN_IMG}}"}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": "{{MODEL_IMG}}"}},
+        "3": {"class_type": "SaveImage", "inputs": {"filename_prefix": "{{OUTPUT_PREFIX}}"}},
+    }
+    wf.write_text(json.dumps(wf_graph), encoding="utf-8")
+
+    config = SwapperConfig(
+        server_address="127.0.0.1:8188",
+        campaign_path=campaign_file,
+        models_dir=models_dir,
+        output_dir=output_dir,
+        workflow_path=wf,
+        skip_existing=True,
+    )
+    mock_client = MagicMock(spec=ComfyUIClient)
+    mock_client.check_connection.return_value = True
+    mock_client.upload_image.return_value = "up.png"
+    mock_client.queue_prompt.return_value = "prompt-id"
+    mock_client.track_execution.return_value = [
+        OutputAsset(filename="out.png", subfolder="", image_type="output")
+    ]
+
+    swapper = BatchSwapper(config=config, client=mock_client)
+    results = swapper.run_batch()
+
+    assert len(results) == 1
+    assert results[0].status == JobStatus.SUCCESS
+    assert mock_client.queue_prompt.call_count == 1
+
+
+def test_batch_swapper_main_exit_code_zero_when_all_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify main returns exit code 0 when all outputs are skipped via --skip-existing."""
+    from scripts.batch_swapper import main as batch_main
+
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "m.png").write_bytes(b"data")
+    campaign = tmp_path / "c.png"
+    campaign.write_bytes(b"data")
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    (out_dir / "c_m.png").write_bytes(b"already_done")
+    wf = tmp_path / "wf.json"
+    wf.write_text(json.dumps({"1": {"class_type": "LoadImage", "inputs": {}}}), encoding="utf-8")
+
+    test_args = [
+        "batch_swapper.py",
+        "--campaign",
+        str(campaign),
+        "--models-dir",
+        str(models_dir),
+        "--output-dir",
+        str(out_dir),
+        "--workflow",
+        str(wf),
+        "--skip-existing",
+    ]
+    monkeypatch.setattr(sys, "argv", test_args)
+    with pytest.raises(SystemExit) as exc_info:
+        batch_main()
+    assert exc_info.value.code == 0

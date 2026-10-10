@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from scripts.launch_comfyui import (
+from batchpersona.launcher import (
     ComfyInstance,
     build_headless_command,
     detect_comfy_desktop_instance,
@@ -163,7 +163,7 @@ def test_detect_comfy_desktop_instance_mocked(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with patch("scripts.launch_comfyui.get_desktop_appdata_dir", return_value=config_dir):
+    with patch("batchpersona.launcher.get_desktop_appdata_dir", return_value=config_dir):
         inst = detect_comfy_desktop_instance()
         assert inst is not None
         assert inst.name == "MockComfy"
@@ -177,32 +177,32 @@ def test_detect_comfy_desktop_instance_edge_cases(tmp_path: Path) -> None:
     """Verify detect_comfy_desktop_instance gracefully handles malformed files."""
     # Config dir doesn't exist
     with patch(
-        "scripts.launch_comfyui.get_desktop_appdata_dir", return_value=tmp_path / "nonexistent"
+        "batchpersona.launcher.get_desktop_appdata_dir", return_value=tmp_path / "nonexistent"
     ):
         assert detect_comfy_desktop_instance() is None
 
     # installations.json doesn't exist
     config_dir = tmp_path / "empty_conf"
     config_dir.mkdir()
-    with patch("scripts.launch_comfyui.get_desktop_appdata_dir", return_value=config_dir):
+    with patch("batchpersona.launcher.get_desktop_appdata_dir", return_value=config_dir):
         assert detect_comfy_desktop_instance() is None
 
     # Invalid JSON
     inst_file = config_dir / "installations.json"
     inst_file.write_text("invalid json", encoding="utf-8")
-    with patch("scripts.launch_comfyui.get_desktop_appdata_dir", return_value=config_dir):
+    with patch("batchpersona.launcher.get_desktop_appdata_dir", return_value=config_dir):
         assert detect_comfy_desktop_instance() is None
 
     # Non-list JSON
     inst_file.write_text("{}", encoding="utf-8")
-    with patch("scripts.launch_comfyui.get_desktop_appdata_dir", return_value=config_dir):
+    with patch("batchpersona.launcher.get_desktop_appdata_dir", return_value=config_dir):
         assert detect_comfy_desktop_instance() is None
 
     # Missing fields or missing paths
     inst_file.write_text(
         json.dumps([{"status": "not_installed"}, {"status": "installed"}]), encoding="utf-8"
     )
-    with patch("scripts.launch_comfyui.get_desktop_appdata_dir", return_value=config_dir):
+    with patch("batchpersona.launcher.get_desktop_appdata_dir", return_value=config_dir):
         assert detect_comfy_desktop_instance() is None
 
 
@@ -269,36 +269,36 @@ def test_detect_comfyui_priority_chain() -> None:
     mock_gui = ComfyInstance(name="GUI", mode="gui")
 
     # 1. Desktop takes priority
-    with patch("scripts.launch_comfyui.detect_comfy_desktop_instance", return_value=mock_desktop):
+    with patch("batchpersona.launcher.detect_comfy_desktop_instance", return_value=mock_desktop):
         assert detect_comfyui() == mock_desktop
 
     # 2. Standalone second
     with (
-        patch("scripts.launch_comfyui.detect_comfy_desktop_instance", return_value=None),
-        patch("scripts.launch_comfyui.detect_standalone_instance", return_value=mock_standalone),
+        patch("batchpersona.launcher.detect_comfy_desktop_instance", return_value=None),
+        patch("batchpersona.launcher.detect_standalone_instance", return_value=mock_standalone),
     ):
         assert detect_comfyui() == mock_standalone
 
     # 3. GUI third
     with (
-        patch("scripts.launch_comfyui.detect_comfy_desktop_instance", return_value=None),
-        patch("scripts.launch_comfyui.detect_standalone_instance", return_value=None),
-        patch("scripts.launch_comfyui.detect_desktop_gui_exe", return_value=mock_gui),
+        patch("batchpersona.launcher.detect_comfy_desktop_instance", return_value=None),
+        patch("batchpersona.launcher.detect_standalone_instance", return_value=None),
+        patch("batchpersona.launcher.detect_desktop_gui_exe", return_value=mock_gui),
     ):
         assert detect_comfyui() == mock_gui
 
     # 4. None if all fail
     with (
-        patch("scripts.launch_comfyui.detect_comfy_desktop_instance", return_value=None),
-        patch("scripts.launch_comfyui.detect_standalone_instance", return_value=None),
-        patch("scripts.launch_comfyui.detect_desktop_gui_exe", return_value=None),
+        patch("batchpersona.launcher.detect_comfy_desktop_instance", return_value=None),
+        patch("batchpersona.launcher.detect_standalone_instance", return_value=None),
+        patch("batchpersona.launcher.detect_desktop_gui_exe", return_value=None),
     ):
         assert detect_comfyui() is None
 
 
 def test_launch_server_already_online() -> None:
     """Verify launch_server returns True immediately if server is already online."""
-    with patch("scripts.launch_comfyui.is_server_online", return_value=True):
+    with patch("batchpersona.launcher.is_server_online", return_value=True):
         instance = ComfyInstance(name="Running", mode="headless")
         assert launch_server(instance, "127.0.0.1:8000") is True
 
@@ -314,7 +314,7 @@ def test_launch_server_headless_win32_and_posix(tmp_path: Path) -> None:
 
     # Windows simulation
     with (
-        patch("scripts.launch_comfyui.is_server_online", side_effect=[False, True]),
+        patch("batchpersona.launcher.is_server_online", side_effect=[False, True]),
         patch("sys.platform", "win32"),
         patch("subprocess.Popen") as mock_popen,
     ):
@@ -324,7 +324,7 @@ def test_launch_server_headless_win32_and_posix(tmp_path: Path) -> None:
 
     # Linux / Darwin simulation
     with (
-        patch("scripts.launch_comfyui.is_server_online", side_effect=[False, True]),
+        patch("batchpersona.launcher.is_server_online", side_effect=[False, True]),
         patch("sys.platform", "linux"),
         patch("subprocess.Popen") as mock_popen,
     ):
@@ -340,7 +340,7 @@ def test_launch_server_gui_mode(tmp_path: Path) -> None:
     instance = ComfyInstance(name="GUI", mode="gui", gui_exe=fake_exe)
 
     with (
-        patch("scripts.launch_comfyui.is_server_online", return_value=False),
+        patch("batchpersona.launcher.is_server_online", return_value=False),
         patch("subprocess.Popen") as mock_popen,
     ):
         success = launch_server(instance, "127.0.0.1:8000", timeout=0.1)
@@ -351,13 +351,13 @@ def test_launch_server_gui_mode(tmp_path: Path) -> None:
 def test_launch_server_unsupported_mode() -> None:
     """Verify error handled on unknown instance mode."""
     instance = ComfyInstance(name="Bad", mode="unknown")
-    with patch("scripts.launch_comfyui.is_server_online", return_value=False):
+    with patch("batchpersona.launcher.is_server_online", return_value=False):
         assert launch_server(instance, "127.0.0.1:8000") is False
 
 
 def test_launch_server_headless_missing_paths() -> None:
     """Verify launch_server returns False if headless instance is missing python_exe or main_py."""
-    with patch("scripts.launch_comfyui.is_server_online", return_value=False):
+    with patch("batchpersona.launcher.is_server_online", return_value=False):
         instance = ComfyInstance(
             name="MissingPaths", mode="headless", python_exe=None, main_py=None
         )
@@ -368,14 +368,14 @@ def test_cli_main_check_and_detect() -> None:
     """Verify main() CLI flags --check and --detect."""
     # --check online
     with (
-        patch("scripts.launch_comfyui.is_server_online", return_value=True),
+        patch("batchpersona.launcher.is_server_online", return_value=True),
         patch.object(sys, "argv", ["launch_comfyui.py", "--check"]),
     ):
         assert main() == 0
 
     # --check offline
     with (
-        patch("scripts.launch_comfyui.is_server_online", return_value=False),
+        patch("batchpersona.launcher.is_server_online", return_value=False),
         patch.object(sys, "argv", ["launch_comfyui.py", "--check"]),
     ):
         assert main() == 1
@@ -385,14 +385,14 @@ def test_cli_main_check_and_detect() -> None:
         name="Found", mode="headless", python_exe=Path("python"), main_py=Path("main.py")
     )
     with (
-        patch("scripts.launch_comfyui.detect_comfyui", return_value=mock_inst),
+        patch("batchpersona.launcher.detect_comfyui", return_value=mock_inst),
         patch.object(sys, "argv", ["launch_comfyui.py", "--detect"]),
     ):
         assert main() == 0
 
     # --detect not found
     with (
-        patch("scripts.launch_comfyui.detect_comfyui", return_value=None),
+        patch("batchpersona.launcher.detect_comfyui", return_value=None),
         patch.object(sys, "argv", ["launch_comfyui.py", "--detect"]),
     ):
         assert main() == 1
@@ -402,15 +402,15 @@ def test_cli_main_launch_flows() -> None:
     """Verify main() CLI --launch flows."""
     # Already online
     with (
-        patch("scripts.launch_comfyui.is_server_online", return_value=True),
+        patch("batchpersona.launcher.is_server_online", return_value=True),
         patch.object(sys, "argv", ["launch_comfyui.py", "--launch"]),
     ):
         assert main() == 0
 
     # Offline, none found
     with (
-        patch("scripts.launch_comfyui.is_server_online", return_value=False),
-        patch("scripts.launch_comfyui.detect_comfyui", return_value=None),
+        patch("batchpersona.launcher.is_server_online", return_value=False),
+        patch("batchpersona.launcher.detect_comfyui", return_value=None),
         patch.object(sys, "argv", ["launch_comfyui.py", "--launch"]),
     ):
         assert main() == 1
@@ -418,18 +418,18 @@ def test_cli_main_launch_flows() -> None:
     # Offline, launch successful
     mock_inst = ComfyInstance(name="Found", mode="headless")
     with (
-        patch("scripts.launch_comfyui.is_server_online", return_value=False),
-        patch("scripts.launch_comfyui.detect_comfyui", return_value=mock_inst),
-        patch("scripts.launch_comfyui.launch_server", return_value=True),
+        patch("batchpersona.launcher.is_server_online", return_value=False),
+        patch("batchpersona.launcher.detect_comfyui", return_value=mock_inst),
+        patch("batchpersona.launcher.launch_server", return_value=True),
         patch.object(sys, "argv", ["launch_comfyui.py", "--launch"]),
     ):
         assert main() == 0
 
     # Offline, launch failed
     with (
-        patch("scripts.launch_comfyui.is_server_online", return_value=False),
-        patch("scripts.launch_comfyui.detect_comfyui", return_value=mock_inst),
-        patch("scripts.launch_comfyui.launch_server", return_value=False),
+        patch("batchpersona.launcher.is_server_online", return_value=False),
+        patch("batchpersona.launcher.detect_comfyui", return_value=mock_inst),
+        patch("batchpersona.launcher.launch_server", return_value=False),
         patch.object(sys, "argv", ["launch_comfyui.py", "--launch"]),
     ):
         assert main() == 1
@@ -461,7 +461,7 @@ def test_detect_comfy_desktop_fallback_main_py(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with patch("scripts.launch_comfyui.get_desktop_appdata_dir", return_value=config_dir):
+    with patch("batchpersona.launcher.get_desktop_appdata_dir", return_value=config_dir):
         inst = detect_comfy_desktop_instance()
         assert inst is not None
         assert inst.main_py == main_py
@@ -477,7 +477,7 @@ def test_build_headless_command_default_server_split(tmp_path: Path) -> None:
     instance = ComfyInstance(name="Headless", mode="headless", python_exe=py, main_py=main_script)
 
     with (
-        patch("scripts.launch_comfyui.is_server_online", side_effect=[False, True]),
+        patch("batchpersona.launcher.is_server_online", side_effect=[False, True]),
         patch("subprocess.Popen"),
     ):
         assert launch_server(instance, "127.0.0.1", timeout=2.0) is True

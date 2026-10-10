@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from scripts.launch_comfyui import ComfyInstance
-from scripts.run_pipeline import (
+from batchpersona.launcher import ComfyInstance
+from batchpersona.pipeline import (
     display_menu,
     ensure_server_ready,
     interactive_menu_loop,
@@ -22,15 +22,15 @@ from scripts.run_pipeline import (
 
 def test_ensure_server_ready_already_online() -> None:
     """Verify ensure_server_ready returns True immediately when online."""
-    with patch("scripts.run_pipeline.is_server_online", return_value=True):
+    with patch("batchpersona.pipeline.is_server_online", return_value=True):
         assert ensure_server_ready("127.0.0.1:8000") is True
 
 
 def test_ensure_server_ready_detect_none() -> None:
     """Verify ensure_server_ready returns False when offline and no instance found."""
     with (
-        patch("scripts.run_pipeline.is_server_online", return_value=False),
-        patch("scripts.run_pipeline.detect_comfyui", return_value=None),
+        patch("batchpersona.pipeline.is_server_online", return_value=False),
+        patch("batchpersona.pipeline.detect_comfyui", return_value=None),
     ):
         assert ensure_server_ready("127.0.0.1:8000") is False
 
@@ -39,9 +39,9 @@ def test_ensure_server_ready_launch_success() -> None:
     """Verify ensure_server_ready returns True when launched successfully."""
     mock_inst = ComfyInstance(name="Test", mode="headless")
     with (
-        patch("scripts.run_pipeline.is_server_online", return_value=False),
-        patch("scripts.run_pipeline.detect_comfyui", return_value=mock_inst),
-        patch("scripts.run_pipeline.launch_server", return_value=True),
+        patch("batchpersona.pipeline.is_server_online", return_value=False),
+        patch("batchpersona.pipeline.detect_comfyui", return_value=mock_inst),
+        patch("batchpersona.pipeline.launch_server", return_value=True),
     ):
         assert ensure_server_ready("127.0.0.1:8000") is True
 
@@ -50,22 +50,22 @@ def test_ensure_server_ready_launch_failure() -> None:
     """Verify ensure_server_ready returns False when launch fails."""
     mock_inst = ComfyInstance(name="Test", mode="headless")
     with (
-        patch("scripts.run_pipeline.is_server_online", return_value=False),
-        patch("scripts.run_pipeline.detect_comfyui", return_value=mock_inst),
-        patch("scripts.run_pipeline.launch_server", return_value=False),
+        patch("batchpersona.pipeline.is_server_online", return_value=False),
+        patch("batchpersona.pipeline.detect_comfyui", return_value=mock_inst),
+        patch("batchpersona.pipeline.launch_server", return_value=False),
     ):
         assert ensure_server_ready("127.0.0.1:8000") is False
 
 
 def test_run_commercial_swap_server_offline() -> None:
     """Verify run_commercial_swap aborts if server cannot be made ready."""
-    with patch("scripts.run_pipeline.ensure_server_ready", return_value=False):
+    with patch("batchpersona.pipeline.ensure_server_ready", return_value=False):
         assert run_commercial_swap() == 1
 
 
 def test_run_commercial_swap_nonexistent_dir(tmp_path: Path) -> None:
     """Verify run_commercial_swap returns 1 when campaign_dir is missing."""
-    with patch("scripts.run_pipeline.ensure_server_ready", return_value=True):
+    with patch("batchpersona.pipeline.ensure_server_ready", return_value=True):
         assert run_commercial_swap(campaign_dir=tmp_path / "nonexistent") == 1
 
 
@@ -75,7 +75,7 @@ def test_run_commercial_swap_empty_dir(tmp_path: Path) -> None:
     campaign_dir.mkdir()
     (campaign_dir / "notes.txt").write_text("not an image", encoding="utf-8")
 
-    with patch("scripts.run_pipeline.ensure_server_ready", return_value=True):
+    with patch("batchpersona.pipeline.ensure_server_ready", return_value=True):
         assert run_commercial_swap(campaign_dir=campaign_dir) == 0
 
 
@@ -89,7 +89,7 @@ def test_run_commercial_swap_success_flow(tmp_path: Path) -> None:
     mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0))
 
     with (
-        patch("scripts.run_pipeline.ensure_server_ready", return_value=True),
+        patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
         patch("subprocess.run", mock_run),
     ):
         code = run_commercial_swap(campaign_dir=campaign_dir)
@@ -106,7 +106,7 @@ def test_run_commercial_swap_partial_failure(tmp_path: Path) -> None:
     mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=42))
 
     with (
-        patch("scripts.run_pipeline.ensure_server_ready", return_value=True),
+        patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
         patch("subprocess.run", mock_run),
     ):
         code = run_commercial_swap(campaign_dir=campaign_dir)
@@ -115,7 +115,7 @@ def test_run_commercial_swap_partial_failure(tmp_path: Path) -> None:
 
 def test_run_quick_dry_run_server_offline() -> None:
     """Verify run_quick_dry_run aborts when server is offline."""
-    with patch("scripts.run_pipeline.ensure_server_ready", return_value=False):
+    with patch("batchpersona.pipeline.ensure_server_ready", return_value=False):
         assert run_quick_dry_run() == 1
 
 
@@ -125,7 +125,7 @@ def test_run_quick_dry_run_with_missing_synthetic_data(tmp_path: Path) -> None:
     mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0))
 
     with (
-        patch("scripts.run_pipeline.ensure_server_ready", return_value=True),
+        patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
         patch("subprocess.run", mock_run),
     ):
         code = run_quick_dry_run(synthetic_dir=synthetic_dir)
@@ -140,7 +140,7 @@ def test_run_quick_dry_run_generation_failure(tmp_path: Path) -> None:
     mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=5))
 
     with (
-        patch("scripts.run_pipeline.ensure_server_ready", return_value=True),
+        patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
         patch("subprocess.run", mock_run),
     ):
         code = run_quick_dry_run(synthetic_dir=synthetic_dir)
@@ -158,7 +158,7 @@ def test_run_quick_dry_run_existing_data(tmp_path: Path) -> None:
     mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0))
 
     with (
-        patch("scripts.run_pipeline.ensure_server_ready", return_value=True),
+        patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
         patch("subprocess.run", mock_run),
     ):
         code = run_quick_dry_run(synthetic_dir=synthetic_dir)
@@ -196,9 +196,9 @@ def test_interactive_menu_loop_options() -> None:
     """Verify menu loop executes choices and exits."""
     with (
         patch("builtins.input", side_effect=["1", "", "2", "", "3", "", "invalid", "0"]),
-        patch("scripts.run_pipeline.run_commercial_swap", return_value=0) as mock_swap,
-        patch("scripts.run_pipeline.run_quick_dry_run", return_value=0) as mock_dry,
-        patch("scripts.run_pipeline.run_quality_gate", return_value=0) as mock_ci,
+        patch("batchpersona.pipeline.run_commercial_swap", return_value=0) as mock_swap,
+        patch("batchpersona.pipeline.run_quick_dry_run", return_value=0) as mock_dry,
+        patch("batchpersona.pipeline.run_quality_gate", return_value=0) as mock_ci,
     ):
         assert interactive_menu_loop("127.0.0.1:8000") == 0
         assert mock_swap.call_count == 1
@@ -226,6 +226,6 @@ def test_main_with_cli_args() -> None:
 
 def test_main_without_args() -> None:
     """Verify main triggers interactive menu loop when no arguments are provided."""
-    with patch("scripts.run_pipeline.interactive_menu_loop", return_value=0) as mock_menu:
+    with patch("batchpersona.pipeline.interactive_menu_loop", return_value=0) as mock_menu:
         assert main([]) == 0
         assert mock_menu.call_count == 1

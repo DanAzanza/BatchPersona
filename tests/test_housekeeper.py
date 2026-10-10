@@ -256,7 +256,7 @@ def test_create_housekeeper_guards_and_fallbacks(
     mock_inst = MagicMock()
     mock_inst.input_dir = inp
     mock_inst.output_dir = out
-    monkeypatch.setattr("scripts.launch_comfyui.detect_comfyui", lambda: mock_inst)
+    monkeypatch.setattr("batchpersona.launcher.detect_comfyui", lambda: mock_inst)
 
     hk5 = create_housekeeper("127.0.0.1:8000", enabled=True)
     assert hk5.input_dir == inp.resolve()

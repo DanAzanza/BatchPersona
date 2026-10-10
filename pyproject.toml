@@ -43,15 +43,17 @@ Repository = "https://github.com/DanAzanza/BatchPersona.git"
 Issues = "https://github.com/DanAzanza/BatchPersona/issues"
 
 [project.scripts]
-batchpersona = "scripts.batch_swapper:main"
-batchpersona-prep = "scripts.prepare_fullbody_dataset:main"
-batchpersona-testdata = "scripts.generate_testdata:main"
+batchpersona = "batchpersona.orchestrator:main"
+batchpersona-pipeline = "batchpersona.pipeline:main"
+batchpersona-prep = "batchpersona.preprocess:main"
+batchpersona-testdata = "batchpersona.generator:main"
+batchpersona-ci = "batchpersona.ci:main"
 
-[tool.setuptools]
-packages = ["scripts"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pyright]
-include = ["scripts", "tests"]
+include = ["src", "scripts", "tests"]
 exclude = ["**/__pycache__", ".pytest_cache", ".venv", ".ci_local_staging"]
 pythonVersion = "3.10"
 reportMissingImports = "none"
@@ -76,14 +78,14 @@ dev = [
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-pythonpath = ["."]
+pythonpath = [".", "src"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra --strict-markers"
 
 [tool.coverage.run]
 branch = true
-source = ["scripts"]
+source = ["batchpersona", "scripts"]
 
 [tool.coverage.report]
 show_missing = true
@@ -114,3 +116,6 @@ select = [
     "RUF", # Ruff-specific rules
 ]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E402"]
