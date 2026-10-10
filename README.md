@@ -8,7 +8,7 @@
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%2F%20WebSocket-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Architecture: DiT](https://img.shields.io/badge/Diffusion-Qwen%20Image%202.1%20DiT-purple.svg)](docs/ARCHITECTURE.md)
 [![Coverage: 91% Branch](https://img.shields.io/badge/test%20coverage-91%25%20branch-brightgreen.svg)](tests/)
-[![Tests: 108 Passed](https://img.shields.io/badge/tests-108%20passed-success.svg)](tests/)
+[![Tests: 119 Passed](https://img.shields.io/badge/tests-119%20passed-success.svg)](tests/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -268,6 +268,9 @@ python scripts/batch_swapper.py \
   --market-tag apac \
   --timeout 300.0
 
+# Or via module execution:
+python -m batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models
+
 # Or via package console entrypoint (when installed with `pip install -e .`):
 batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models
 ```
@@ -285,6 +288,11 @@ batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models
 | `--mask` | `Path` | `None` | Path to optional manual segmentation mask. |
 | `--filter` | `str` | `*` | Glob pattern to filter models inside `--models-dir` (e.g. `*east_asia*`). |
 | `--timeout` | `float` | `300.0` | Execution timeout in seconds per individual asset. |
+| `--skip-existing` | `flag` | `False` | Skip models whose output asset already exists in `--output-dir` (size > 0). |
+| `--force` | `flag` | `False` | Force re-rendering even if output asset already exists. |
+| `--seed` | `int` | `None` | Override diffusion sampler seed (0 to 2^64 - 1). |
+| `--resolution` | `int` | `None` | Override model resolution (e.g. 1024, 1280). |
+| `--prompt` | `str` | `None` | Override positive instruction prompt (preserves `<image1>` and `<image2>` tokens). |
 | `--no-cleanup` | `flag` | `False` | Disable automatic purging of intermediate ComfyUI assets. |
 | `--comfy-input-dir` | `Path` | `None` | Override ComfyUI input directory path for housekeeping. |
 | `--comfy-output-dir` | `Path` | `None` | Override ComfyUI output directory path for housekeeping. |
@@ -293,12 +301,12 @@ batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models
 
 ## 🧪 Verification & Test Suite
 
-The automated test suite provides **91% branch coverage (108 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
+The automated test suite provides **91% branch coverage (119 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
 
 Run the complete test suite with coverage report:
 
 ```bash
-python -m pytest tests --cov=scripts --cov-report=term-missing -v
+python -m pytest tests --cov=batchpersona --cov=scripts --cov-report=term-missing -v
 ```
 
 ### GitHub Actions CI Parity (Run CI Locally)
@@ -312,27 +320,10 @@ python scripts/run_ci_locally.py
 This sequentially runs:
 1. `ruff check .` (PEP compliance static linting)
 2. `ruff format --check .` (Code style formatting verification)
-3. `python scripts/generate_testdata.py --output-dir .ci_local_staging --size 256` (Synthetic data CI smoke test)
-4. `pytest tests --cov=scripts --cov-report=term-missing -v` (Full unit & integration regression suite)
-5. Automatic cleanup of all staging artifacts
-
-### Coverage Breakdown
-
-```text
-Name                                  Stmts   Miss Branch BrPart  Cover   Missing
----------------------------------------------------------------------------------
-scripts\__init__.py                       0      0      0      0   100%
-scripts\batch_swapper.py                418     31    128     21    90%   ...
-scripts\generate_testdata.py            164      1      4      0    99%   ...
-scripts\housekeeper.py                  132      7     66      9    92%   ...
-scripts\launch_comfyui.py               253     16    118     20    90%   ...
-scripts\prepare_fullbody_dataset.py      79      5     34      6    90%   ...
-scripts\run_ci_locally.py                67      6     22      6    87%   ...
-scripts\run_pipeline.py                 125      4     42      5    95%   ...
----------------------------------------------------------------------------------
-TOTAL                                  1238     70    414     67    91%
-Required test coverage of 90.0% reached. Total coverage: 91.46%
-```
+3. `pyright src scripts tests` (Strict static type analysis)
+4. `python scripts/generate_testdata.py --output-dir .ci_local_staging --size 256` (Synthetic data CI smoke test)
+5. `pytest tests --cov=batchpersona --cov=scripts --cov-report=term-missing -v` (Full unit & integration regression suite)
+6. Automatic cleanup of all staging artifacts
 
 ### Linting & Static Typing Quality Gate
 
@@ -344,7 +335,7 @@ python -m ruff check .
 python -m ruff format --check .
 
 # Strict static type analysis (0 errors, 0 warnings)
-python -m pyright scripts tests
+python -m pyright src scripts tests
 ```
 
 ---

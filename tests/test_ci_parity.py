@@ -284,3 +284,13 @@ def test_ci_main_direct(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda *args, **kwargs: 0,
     )
     assert ci_main(["--skip-lint", "--skip-tests", "-v"]) == 0
+
+
+def test_module_main_entrypoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify src/batchpersona/__main__.py dispatches to pipeline.main."""
+    import runpy
+
+    monkeypatch.setattr("batchpersona.pipeline.main", lambda argv=None: 0)
+    with pytest.raises(SystemExit) as exc_info:
+        runpy.run_module("batchpersona", run_name="__main__")
+    assert exc_info.value.code == 0

@@ -45,6 +45,7 @@ Issues = "https://github.com/DanAzanza/BatchPersona/issues"
 [project.scripts]
 batchpersona = "batchpersona.orchestrator:main"
 batchpersona-pipeline = "batchpersona.pipeline:main"
+batchpersona-launcher = "batchpersona.launcher:main"
 batchpersona-prep = "batchpersona.preprocess:main"
 batchpersona-testdata = "batchpersona.generator:main"
 batchpersona-ci = "batchpersona.ci:main"
