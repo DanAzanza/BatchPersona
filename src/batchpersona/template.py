@@ -42,6 +42,14 @@ class WorkflowTemplate:
         serialized = json.dumps(self._graph)
         return "{{MASK_IMG}}" in serialized
 
+    def get_required_node_types(self) -> set[str]:
+        """Extract all unique class_type names used across the workflow graph."""
+        return {
+            str(node_def["class_type"])
+            for node_def in self._graph.values()
+            if isinstance(node_def, dict) and "class_type" in node_def
+        }
+
     def patch(
         self,
         campaign_image_name: str,

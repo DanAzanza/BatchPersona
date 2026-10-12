@@ -1492,3 +1492,133 @@ def test_batch_swapper_main_exit_code_zero_when_all_skipped(
     with pytest.raises(SystemExit) as exc_info:
         batch_main()
     assert exc_info.value.code == 0
+
+
+def test_workflow_template_get_required_node_types() -> None:
+    """Verify get_required_node_types extracts all class_type strings from workflow."""
+    wf_data = {
+        "1": {"class_type": "LoadImage", "inputs": {}},
+        "2": {"class_type": "KSampler", "inputs": {}},
+        "3": {"class_type": "TextEncodeQwenImage21", "inputs": {}},
+        "4": {"class_type": "LoadImage", "inputs": {}},
+    }
+    template = WorkflowTemplate(wf_data)
+    nodes = template.get_required_node_types()
+    assert nodes == {"LoadImage", "KSampler", "TextEncodeQwenImage21"}
+
+
+def test_client_get_registered_node_types_success() -> None:
+    """Verify get_registered_node_types parses /object_info dictionary keys."""
+    mock_session = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "LoadImage": {"input": {}},
+        "KSampler": {"input": {}},
+        "VAEDecode": {"input": {}},
+    }
+    mock_session.get.return_value = mock_resp
+
+    client = ComfyUIClient(server_address="127.0.0.1:8188", session=mock_session)
+    registered = client.get_registered_node_types()
+    assert registered == {"LoadImage", "KSampler", "VAEDecode"}
+    mock_session.get.assert_called_once()
+    assert "object_info" in mock_session.get.call_args[0][0]
+
+
+def test_client_get_registered_node_types_failure() -> None:
+    """Verify get_registered_node_types returns None gracefully on error or non-200."""
+    mock_session = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 500
+    mock_session.get.return_value = mock_resp
+
+    client = ComfyUIClient(server_address="127.0.0.1:8188", session=mock_session)
+    assert client.get_registered_node_types() is None
+
+    # Exception during GET
+    mock_session.get.side_effect = requests.RequestException("Network error")
+    assert client.get_registered_node_types() is None
+
+
+def test_batch_swapper_validate_workflow_nodes(tmp_path: Path) -> None:
+    """Verify validate_workflow_nodes checks custom nodes against server registry."""
+    wf_file = tmp_path / "wf.json"
+    wf_file.write_text(
+        json.dumps(
+            {
+                "1": {"class_type": "LoadImage", "inputs": {}},
+                "2": {"class_type": "SpecialCustomNode", "inputs": {}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    camp = tmp_path / "camp.png"
+    camp.touch()
+    config = SwapperConfig(
+        server_address="127.0.0.1:8188",
+        campaign_path=camp,
+        mask_path=None,
+        models_dir=tmp_path,
+        output_dir=tmp_path,
+        workflow_path=wf_file,
+    )
+
+    # 1. Success case: all nodes available
+    mock_client_ok = MagicMock(spec=ComfyUIClient)
+    mock_client_ok._http_base = "http://127.0.0.1:8188"
+    mock_client_ok.get_registered_node_types.return_value = {
+        "LoadImage",
+        "SpecialCustomNode",
+        "Other",
+    }
+    swapper_ok = BatchSwapper(config=config, client=mock_client_ok)
+    swapper_ok.validate_workflow_nodes()
+
+    # 2. Failure case: SpecialCustomNode missing
+    mock_client_missing = MagicMock(spec=ComfyUIClient)
+    mock_client_missing._http_base = "http://127.0.0.1:8188"
+    mock_client_missing.get_registered_node_types.return_value = {"LoadImage", "KSampler"}
+    swapper_missing = BatchSwapper(config=config, client=mock_client_missing)
+    with pytest.raises(
+        ComfyAPIError, match=r"(?s)missing required custom node type.*SpecialCustomNode"
+    ):
+        swapper_missing.validate_workflow_nodes()
+
+    # 3. Graceful fallback: endpoint unavailable (returns None)
+    mock_client_none = MagicMock(spec=ComfyUIClient)
+    mock_client_none.get_registered_node_types.return_value = None
+    swapper_none = BatchSwapper(config=config, client=mock_client_none)
+    swapper_none.validate_workflow_nodes()
+
+
+def test_batch_swapper_run_batch_preflight_node_validation_aborts(tmp_path: Path) -> None:
+    """Verify run_batch aborts immediately before image ingestion if nodes are missing."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "m.png").write_bytes(b"data")
+    campaign = tmp_path / "c.png"
+    campaign.write_bytes(b"data")
+    wf_file = tmp_path / "wf.json"
+    wf_file.write_text(
+        json.dumps({"1": {"class_type": "MissingCustomNode", "inputs": {}}}),
+        encoding="utf-8",
+    )
+    config = SwapperConfig(
+        server_address="127.0.0.1:8188",
+        campaign_path=campaign,
+        mask_path=None,
+        models_dir=models_dir,
+        output_dir=tmp_path / "out",
+        workflow_path=wf_file,
+    )
+
+    mock_client = MagicMock(spec=ComfyUIClient)
+    mock_client.check_connection.return_value = True
+    mock_client.get_registered_node_types.return_value = {"LoadImage", "KSampler"}
+
+    swapper = BatchSwapper(config=config, client=mock_client)
+    with pytest.raises(ComfyAPIError, match="missing required custom node type"):
+        swapper.run_batch()
+
+    assert mock_client.upload_image.call_count == 0

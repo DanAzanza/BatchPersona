@@ -91,6 +91,26 @@ class BatchSwapper:
             return candidate
         return None
 
+    def validate_workflow_nodes(self) -> None:
+        """Verify that ComfyUI server has all required custom nodes installed before execution."""
+        required = self._template.get_required_node_types()
+        available = self._client.get_registered_node_types()
+        if available is not None and isinstance(available, (set, frozenset, list, tuple)):
+            available_set = set(available)
+            missing = required - available_set
+            if missing:
+                missing_str = ", ".join(sorted(missing))
+                server_name = getattr(
+                    self._client, "http_base", getattr(self._client, "_http_base", "ComfyUI")
+                )
+                raise ComfyAPIError(
+                    f"ComfyUI server at {server_name} is missing required custom node type(s):\n"
+                    f"  Missing: {missing_str}\n"
+                    f"Troubleshooting:\n"
+                    f"  1. Install the missing custom node package(s) via ComfyUI Manager or git.\n"
+                    f"  2. Restart ComfyUI to register the newly installed nodes."
+                )
+
     def _render_progress_bar(self, step: int, max_steps: int, node: str) -> None:
         """Render in-place terminal progress bar or structured log in headless/CI environments."""
         if max_steps <= 0:
@@ -318,13 +338,19 @@ class BatchSwapper:
 
         # Pre-flight ComfyUI server connectivity check
         if not self._client.check_connection():
+            server_addr = getattr(
+                self._client, "http_base", getattr(self._client, "_http_base", "ComfyUI")
+            )
             raise ComfyAPIError(
-                f"Cannot connect to ComfyUI at {self._client._http_base}.\n"
+                f"Cannot connect to ComfyUI at {server_addr}.\n"
                 f"Troubleshooting tips:\n"
                 f"  1. Verify ComfyUI is running.\n"
                 f"  2. Check server port: ComfyUI Desktop typically runs on 8000, while portable/git uses 8188.\n"
                 f"  3. Pass --server 127.0.0.1:<port> or export COMFYUI_SERVER env var."
             )
+
+        # Pre-flight ComfyUI custom node availability check
+        self.validate_workflow_nodes()
 
         # Ingest campaign base image
         LOGGER.info("Ingesting base campaign asset: %s", self._config.campaign_path)

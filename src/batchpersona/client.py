@@ -43,6 +43,16 @@ class ComfyUIClient:
     def _default_ws_connect(url: str, timeout: float) -> Any:
         return websocket.create_connection(url, timeout=timeout)
 
+    @property
+    def http_base(self) -> str:
+        """Return base HTTP URL of ComfyUI server."""
+        return self._http_base
+
+    @property
+    def server_address(self) -> str:
+        """Return target host:port address string."""
+        return self._server
+
     def check_connection(self, timeout: float = 3.0) -> bool:
         """Check if ComfyUI REST server is reachable and responsive."""
         try:
@@ -50,6 +60,20 @@ class ComfyUIClient:
             return resp.status_code == 200
         except (requests.RequestException, OSError):
             return False
+
+    def get_registered_node_types(self, timeout_seconds: float = 5.0) -> set[str] | None:
+        """Retrieve set of registered node class names from ComfyUI /object_info endpoint."""
+        url = f"{self._http_base}/object_info"
+        try:
+            response = self._session.get(url, timeout=timeout_seconds)
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, dict):
+                    return set(data.keys())
+        except (requests.RequestException, ValueError, OSError) as e:
+            LOGGER.debug("Could not query ComfyUI /object_info: %s", e)
+            return None
+        return None
 
     def upload_image(self, file_path: Path, image_type: str = "input") -> str:
         """Upload image to ComfyUI /upload/image endpoint. Returns stored filename."""

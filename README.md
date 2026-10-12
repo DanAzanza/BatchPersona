@@ -8,7 +8,7 @@
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%2F%20WebSocket-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Architecture: DiT](https://img.shields.io/badge/Diffusion-Qwen%20Image%202.1%20DiT-purple.svg)](docs/ARCHITECTURE.md)
 [![Coverage: 91% Branch](https://img.shields.io/badge/test%20coverage-91%25%20branch-brightgreen.svg)](tests/)
-[![Tests: 119 Passed](https://img.shields.io/badge/tests-119%20passed-success.svg)](tests/)
+[![Tests: 135 Passed](https://img.shields.io/badge/tests-135%20passed-success.svg)](tests/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -155,21 +155,33 @@ BatchPersona/
 │   ├── model_swap_api.json                  # SDXL Inpainting fallback graph
 │   ├── model_swap_auto_mask_api.json        # RemBg/BiRefNet autonomous masking
 │   └── model_swap_composite_api.json        # Lightweight compositor fallback
-├── scripts/
-│   ├── __init__.py              # Package marker
-│   ├── batch_swapper.py         # Headless REST/WebSocket orchestrator
-│   ├── generate_testdata.py     # Pure Python synthetic lookbook/portrait generator
-│   ├── housekeeper.py           # Smart local housekeeping & storage de-duplication
-│   ├── launch_comfyui.py        # Automated headless ComfyUI server detector & launcher
-│   ├── prepare_fullbody_dataset.py # Centering-aware dataset preprocessor (ImageOps.fit)
-│   ├── run_ci_locally.py        # Local CI parity orchestrator (Ruff, Gen, Tests)
-│   └── run_pipeline.py          # Interactive menu & campaign batch runner
-├── tests/
-│   ├── test_batch_swapper.py    # Unit & integration test suite (47 tests)
-│   ├── test_ci_parity.py        # CI parity, requirements, AST compatibility (8 tests)
-│   ├── test_housekeeper.py      # Storage housekeeping & safety guard tests (10 tests)
-│   ├── test_launch_comfyui.py   # Server launcher & desktop detection tests (25 tests)
-│   └── test_run_pipeline.py     # Pipeline runner orchestration tests (18 tests)
+├── src/batchpersona/            # 📦 Core production package
+│   ├── __init__.py              # Unified library exports & metadata
+│   ├── __main__.py              # CLI module entrypoint (python -m batchpersona)
+│   ├── ci.py                    # CI test orchestration and parity checks
+│   ├── client.py                # ComfyUI REST & WebSocket state machine client
+│   ├── generator.py             # Pure-Python synthetic image asset synthesizer
+│   ├── housekeeper.py           # Storage de-duplication & intermediate asset cleanup
+│   ├── launcher.py              # Automated server detection, launch & shutdown
+│   ├── models.py                # Strongly typed domain dataclasses & exceptions
+│   ├── orchestrator.py          # Batch model swapping pipeline engine
+│   ├── pipeline.py              # Interactive management console & CLI runner
+│   ├── preprocess.py            # Centering-aware dataset preprocessor (ImageOps.fit)
+│   └── template.py              # Workflow graph loading, mutation & node validation
+├── scripts/                     # 🔌 Backward-compatible CLI shims
+│   ├── batch_swapper.py         # Forwarding shim -> batchpersona.orchestrator
+│   ├── generate_testdata.py     # Forwarding shim -> batchpersona.generator
+│   ├── housekeeper.py           # Forwarding shim -> batchpersona.housekeeper
+│   ├── launch_comfyui.py        # Forwarding shim -> batchpersona.launcher
+│   ├── prepare_fullbody_dataset.py # Forwarding shim -> batchpersona.preprocess
+│   ├── run_ci_locally.py        # Forwarding shim -> batchpersona.ci
+│   └── run_pipeline.py          # Forwarding shim -> batchpersona.pipeline
+├── tests/                       # 🧪 Automated test suites (135 tests)
+│   ├── test_batch_swapper.py    # Batch swapper, skip-existing & node validation tests
+│   ├── test_ci_parity.py        # CI parity, AST compatibility & packaging checks
+│   ├── test_housekeeper.py      # Storage housekeeping & safety guard tests
+│   ├── test_launch_comfyui.py   # Server launcher, PID tracking & shutdown tests
+│   └── test_run_pipeline.py     # Pipeline runner orchestration & menu tests
 ├── install.bat                  # ⚡ Windows 1-Click Environment Setup & Self-Test
 ├── install.sh                   # ⚡ Linux/macOS 1-Click Environment Setup & Self-Test
 ├── run_pipeline.bat             # 🚀 Windows Interactive Management & Batch Runner
@@ -218,12 +230,13 @@ Launch the interactive management console to execute campaigns, run zero-GPU dry
       BatchPersona - Headless ComfyUI Model Replacement Pipeline
 ===========================================================================
   Python runtime: .venv\Scripts\python.exe
-  Default server: 127.0.0.1:8000
+  Server address: 127.0.0.1:8000
 ===========================================================================
 
   [1] Run Commercial Model Swap  (Campaign Lookbooks - Diverse Personas)
   [2] Run Quick Dry-Run          (Instant Zero-GPU Verification, < 1s)
-  [3] Run Quality Gate and Tests (Pytest 55/55 + Coverage + Ruff)
+  [3] Run Quality Gate and Tests (Pytest + Coverage + Ruff)
+  [4] Close ComfyUI Console      (Free GPU VRAM & Terminate Server)
   [0] Exit
 ```
 
