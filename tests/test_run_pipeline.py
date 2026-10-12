@@ -183,6 +183,7 @@ def test_display_menu(capsys: pytest.CaptureFixture[str]) -> None:
     assert "[1] Run Commercial Model Swap" in captured
     assert "[2] Run Quick Dry-Run" in captured
     assert "[3] Run Quality Gate and Tests" in captured
+    assert "[4] Close ComfyUI Console" in captured
     assert "[0] Exit" in captured
 
 
@@ -195,21 +196,42 @@ def test_interactive_menu_loop_exit_immediately() -> None:
 def test_interactive_menu_loop_options() -> None:
     """Verify menu loop executes choices and exits."""
     with (
-        patch("builtins.input", side_effect=["1", "", "2", "", "3", "", "invalid", "0"]),
+        patch(
+            "builtins.input",
+            side_effect=["1", "", "2", "", "3", "", "4", "", "4", "", "invalid", "0"],
+        ),
         patch("batchpersona.pipeline.run_commercial_swap", return_value=0) as mock_swap,
         patch("batchpersona.pipeline.run_quick_dry_run", return_value=0) as mock_dry,
         patch("batchpersona.pipeline.run_quality_gate", return_value=0) as mock_ci,
+        patch("batchpersona.pipeline.stop_server", side_effect=[True, False]) as mock_stop,
     ):
         assert interactive_menu_loop("127.0.0.1:8000") == 0
         assert mock_swap.call_count == 1
         assert mock_dry.call_count == 1
         assert mock_ci.call_count == 1
+        assert mock_stop.call_count == 2
+
+
+def test_interactive_menu_loop_auto_cleanup_on_exit() -> None:
+    """Verify auto-started server is terminated on exit."""
+    with (
+        patch("batchpersona.pipeline._AUTO_STARTED_SERVER", "127.0.0.1:8000"),
+        patch("batchpersona.pipeline.stop_server") as mock_stop,
+        patch("builtins.input", side_effect=["0"]),
+    ):
+        assert interactive_menu_loop("127.0.0.1:8000") == 0
+        mock_stop.assert_called_once_with("127.0.0.1:8000")
 
 
 def test_interactive_menu_loop_keyboard_interrupt() -> None:
-    """Verify graceful handling of KeyboardInterrupt."""
-    with patch("builtins.input", side_effect=KeyboardInterrupt):
+    """Verify graceful handling of KeyboardInterrupt and server cleanup."""
+    with (
+        patch("batchpersona.pipeline._AUTO_STARTED_SERVER", "127.0.0.1:8000"),
+        patch("batchpersona.pipeline.stop_server") as mock_stop,
+        patch("builtins.input", side_effect=KeyboardInterrupt),
+    ):
         assert interactive_menu_loop("127.0.0.1:8000") == 0
+        mock_stop.assert_called_once_with("127.0.0.1:8000")
 
 
 def test_main_with_cli_args() -> None:

@@ -27,19 +27,34 @@ try:
         detect_comfyui,
         is_server_online,
         launch_server,
+        stop_server,
     )
 except ImportError:
     from scripts.launch_comfyui import (  # type: ignore
         detect_comfyui,
         is_server_online,
         launch_server,
+        stop_server,
     )
 
 VALID_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+_AUTO_STARTED_SERVER: str | None = None
+
+
+def cleanup_auto_started_server() -> None:
+    """Terminate and release resources for auto-started ComfyUI backend."""
+    global _AUTO_STARTED_SERVER
+    if _AUTO_STARTED_SERVER:
+        print(
+            f"\n[AUTO-SHUTDOWN] Closing auto-started ComfyUI console at {_AUTO_STARTED_SERVER}..."
+        )
+        stop_server(_AUTO_STARTED_SERVER)
+        _AUTO_STARTED_SERVER = None
 
 
 def ensure_server_ready(server: str = "127.0.0.1:8000", timeout: float = 90.0) -> bool:
     """Ensure ComfyUI server is online, launching it headlessly if needed."""
+    global _AUTO_STARTED_SERVER
     if is_server_online(server, timeout=1.5):
         return True
 
@@ -57,6 +72,7 @@ def ensure_server_ready(server: str = "127.0.0.1:8000", timeout: float = 90.0) -
         print(f"[ERROR] ComfyUI server failed to become ready at {server} within {int(timeout)}s.")
         return False
 
+    _AUTO_STARTED_SERVER = server
     return True
 
 
@@ -198,6 +214,7 @@ def display_menu(server: str) -> None:
     print("  [1] Run Commercial Model Swap  (Campaign Lookbooks - Diverse Personas)")
     print("  [2] Run Quick Dry-Run          (Instant Zero-GPU Verification, < 1s)")
     print("  [3] Run Quality Gate and Tests (Pytest + Coverage + Ruff)")
+    print("  [4] Close ComfyUI Console      (Free GPU VRAM & Terminate Server)")
     print("  [0] Exit")
     print()
     print(header)
@@ -205,38 +222,52 @@ def display_menu(server: str) -> None:
 
 def interactive_menu_loop(server: str) -> int:
     """Run the interactive console menu loop until exited."""
-    while True:
-        display_menu(server)
-        try:
-            choice = input("Select an option [1-3, 0]: ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print("\nExiting BatchPersona. Goodbye!")
-            return 0
+    try:
+        while True:
+            display_menu(server)
+            try:
+                choice = input("Select an option [1-4, 0]: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                cleanup_auto_started_server()
+                print("\nExiting BatchPersona. Goodbye!")
+                return 0
 
-        exit_code = 0
-        if choice == "1":
-            exit_code = run_commercial_swap(server)
-        elif choice == "2":
-            exit_code = run_quick_dry_run(server)
-        elif choice == "3":
-            exit_code = run_quality_gate()
-        elif choice == "0":
-            print("Exiting BatchPersona. Goodbye!")
-            return 0
-        else:
-            print(f"[WARNING] Invalid selection: '{choice}'. Please enter 1, 2, 3, or 0.")
-            continue
+            exit_code = 0
+            if choice == "1":
+                exit_code = run_commercial_swap(server)
+            elif choice == "2":
+                exit_code = run_quick_dry_run(server)
+            elif choice == "3":
+                exit_code = run_quality_gate()
+            elif choice == "4":
+                print(f"\n[SHUTDOWN] Terminating ComfyUI server at {server}...")
+                stopped = stop_server(server)
+                if stopped:
+                    print("[OK] ComfyUI server and console closed. GPU VRAM released.")
+                else:
+                    print("[WARNING] Could not stop ComfyUI server or server is still responding.")
+                exit_code = 0
+            elif choice == "0":
+                cleanup_auto_started_server()
+                print("Exiting BatchPersona. Goodbye!")
+                return 0
+            else:
+                print(f"[WARNING] Invalid selection: '{choice}'. Please enter 1, 2, 3, 4, or 0.")
+                continue
 
-        print()
-        if exit_code == 0:
-            print("[SUCCESS] Operation completed successfully.")
-        else:
-            print(f"[FAILED] Operation exited with error code: {exit_code}")
+            print()
+            if exit_code == 0:
+                print("[SUCCESS] Operation completed successfully.")
+            else:
+                print(f"[FAILED] Operation exited with error code: {exit_code}")
 
-        try:
-            input("\nPress Enter to return to menu...")
-        except (KeyboardInterrupt, EOFError):
-            return 0
+            try:
+                input("\nPress Enter to return to menu...")
+            except (KeyboardInterrupt, EOFError):
+                cleanup_auto_started_server()
+                return 0
+    finally:
+        cleanup_auto_started_server()
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import subprocess
@@ -12,7 +13,53 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
+
+PID_FILE_NAME = ".comfyui_server.pid"
+_ACTIVE_SERVER_PROCESS: subprocess.Popen[Any] | None = None
+
+
+def get_pid_file_path() -> Path:
+    """Return path to persistent ComfyUI server PID tracking file."""
+    return Path.cwd() / PID_FILE_NAME
+
+
+def record_server_pid(server: str, pid: Any) -> None:
+    """Record running server PID to file for lifecycle management."""
+    pid_file = get_pid_file_path()
+    try:
+        val: int | None = int(pid)
+    except (TypeError, ValueError):
+        val = None
+    if val is None:
+        return
+    with contextlib.suppress(OSError):
+        pid_file.write_text(json.dumps({"pid": val, "server": server}), encoding="utf-8")
+
+
+def read_server_pid(server: str | None = None) -> int | None:
+    """Read server PID from tracking file if valid."""
+    pid_file = get_pid_file_path()
+    if not pid_file.is_file():
+        return None
+    try:
+        data = json.loads(pid_file.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None
+        if server is not None and data.get("server") != server:
+            return None
+        pid = data.get("pid")
+        return int(pid) if pid is not None else None
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def clear_server_pid_file() -> None:
+    """Remove server PID tracking file if it exists."""
+    pid_file = get_pid_file_path()
+    if pid_file.is_file():
+        with contextlib.suppress(OSError):
+            pid_file.unlink()
 
 
 class ComfyInstance(NamedTuple):
@@ -323,20 +370,24 @@ def launch_server(
             creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0) | getattr(
                 subprocess, "CREATE_NEW_PROCESS_GROUP", 0
             )
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 cmd,
                 cwd=cwd,
                 startupinfo=startupinfo,
                 creationflags=creationflags,
             )
         else:
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 cmd,
                 cwd=cwd,
                 start_new_session=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+
+        global _ACTIVE_SERVER_PROCESS
+        _ACTIVE_SERVER_PROCESS = proc
+        record_server_pid(server, proc.pid)
 
     elif instance.mode == "gui" and instance.gui_exe:
         print(f"[LAUNCH] Starting Comfy Desktop GUI ({instance.gui_exe})...")
@@ -345,9 +396,12 @@ def launch_server(
         )
         if sys.platform == "win32":
             detached = getattr(subprocess, "DETACHED_PROCESS", 0)
-            subprocess.Popen([str(instance.gui_exe)], creationflags=detached)
+            proc = subprocess.Popen([str(instance.gui_exe)], creationflags=detached)
         else:
-            subprocess.Popen([str(instance.gui_exe)], start_new_session=True)
+            proc = subprocess.Popen([str(instance.gui_exe)], start_new_session=True)
+
+        _ACTIVE_SERVER_PROCESS = proc
+        record_server_pid(server, proc.pid)
     else:
         print(f"[ERROR] Unsupported instance mode: {instance.mode}")
         return False
@@ -379,6 +433,162 @@ def launch_server(
     return False
 
 
+def find_pid_by_port(port: int) -> int | None:
+    """Find process ID listening on specified TCP port."""
+    if sys.platform == "win32":
+        try:
+            res = subprocess.run(
+                ["netstat", "-ano", "-p", "tcp"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            for line in res.stdout.splitlines():
+                parts = line.strip().split()
+                if (
+                    len(parts) >= 5
+                    and parts[0].upper() == "TCP"
+                    and parts[3].upper() == "LISTENING"
+                    and parts[1].endswith(f":{port}")
+                ):
+                    try:
+                        return int(parts[4])
+                    except ValueError:
+                        continue
+        except OSError:
+            return None
+    else:
+        try:
+            res = subprocess.run(
+                ["lsof", "-i", f":{port}", "-sTCP:LISTEN", "-t"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            stdout = res.stdout.strip()
+            if stdout:
+                first_line = stdout.splitlines()[0].strip()
+                if first_line.isdigit():
+                    return int(first_line)
+        except OSError:
+            return None
+    return None
+
+
+def unload_comfyui_vram(server: str = "127.0.0.1:8000", timeout: float = 3.0) -> bool:
+    """Send /interrupt and /free signals to ComfyUI to immediately release GPU VRAM."""
+    url_interrupt = f"http://{server}/interrupt"
+    url_free = f"http://{server}/free"
+    headers = {"User-Agent": "BatchPersona-Launcher", "Content-Type": "application/json"}
+
+    # 1. Interrupt any active jobs
+    try:
+        req = urllib.request.Request(url_interrupt, data=b"", headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=timeout):
+            pass
+    except Exception:
+        pass
+
+    # 2. Trigger memory/model unloading
+    try:
+        payload = json.dumps({"unload_models": True, "free_memory": True}).encode("utf-8")
+        req = urllib.request.Request(url_free, data=payload, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+
+def stop_server(
+    server: str = "127.0.0.1:8000",
+    timeout: float = 5.0,
+    unload_first: bool = True,
+) -> bool:
+    """Stop ComfyUI server, release GPU VRAM, and close console window.
+
+    Args:
+        server: Host:port of ComfyUI server (default: 127.0.0.1:8000).
+        timeout: Maximum seconds to wait for server process to terminate.
+        unload_first: Whether to dispatch /interrupt and /free to release GPU VRAM first.
+
+    Returns:
+        True if server is stopped or was already offline, False if termination failed.
+    """
+    global _ACTIVE_SERVER_PROCESS
+
+    was_online = is_server_online(server, timeout=1.0)
+    # If server is already offline and no process is tracked, exit early
+    if not was_online and _ACTIVE_SERVER_PROCESS is None and read_server_pid(server) is None:
+        clear_server_pid_file()
+        print(f"[OK] ComfyUI server at {server} is already offline.")
+        return True
+
+    # 1. Release GPU VRAM before killing process
+    if unload_first and was_online:
+        print(f"[SHUTDOWN] Unloading ComfyUI models and releasing GPU VRAM ({server})...")
+        unload_comfyui_vram(server, timeout=3.0)
+        time.sleep(0.5)
+
+    # 2. Resolve target PID
+    pid: int | None = None
+    if _ACTIVE_SERVER_PROCESS is not None:
+        pid = _ACTIVE_SERVER_PROCESS.pid
+    if pid is None:
+        pid = read_server_pid(server)
+    if pid is None:
+        try:
+            port = int(server.split(":")[1]) if ":" in server else 8000
+            pid = find_pid_by_port(port)
+        except ValueError:
+            pid = None
+
+    # 3. Terminate process tree
+    if pid is not None:
+        print(f"[SHUTDOWN] Terminating ComfyUI server process (PID: {pid})...")
+        if sys.platform == "win32":
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(pid)],
+                    capture_output=True,
+                    check=False,
+                )
+            except OSError as e:
+                print(f"[WARNING] taskkill failed: {e}")
+        else:
+            try:
+                import signal
+
+                os.kill(pid, signal.SIGTERM)
+                time.sleep(0.5)
+                sigkill = getattr(signal, "SIGKILL", signal.SIGTERM)
+                with contextlib.suppress(OSError):
+                    os.kill(pid, sigkill)
+            except OSError:
+                pass
+
+    if _ACTIVE_SERVER_PROCESS is not None:
+        with contextlib.suppress(OSError):
+            _ACTIVE_SERVER_PROCESS.terminate()
+        _ACTIVE_SERVER_PROCESS = None
+
+    clear_server_pid_file()
+
+    # 4. Confirm server shutdown
+    start_time = time.monotonic()
+    while time.monotonic() - start_time < timeout:
+        if not is_server_online(server, timeout=1.0):
+            print(f"[OK] ComfyUI server at {server} has been successfully closed.")
+            return True
+        time.sleep(0.5)
+
+    if is_server_online(server, timeout=1.0):
+        print(f"[WARNING] ComfyUI server at {server} is still responding.")
+        return False
+
+    print(f"[OK] ComfyUI server at {server} has stopped.")
+    return True
+
+
 def main() -> int:
     """CLI entrypoint for ComfyUI launcher."""
     parser = argparse.ArgumentParser(
@@ -405,13 +615,23 @@ def main() -> int:
         help="Launch ComfyUI server headlessly if offline and wait until ready",
     )
     parser.add_argument(
+        "--stop",
+        action="store_true",
+        help="Stop ComfyUI server, release GPU VRAM, and close console window",
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=60.0,
-        help="Seconds to wait for server initialization (default: 60.0)",
+        help="Seconds to wait for server initialization or shutdown (default: 60.0)",
     )
 
     args = parser.parse_args()
+
+    # Stop mode
+    if args.stop:
+        success = stop_server(args.server, timeout=args.timeout)
+        return 0 if success else 1
 
     # Fast check mode
     if args.check:

@@ -370,6 +370,7 @@ class BatchSwapper:
                 )
                 results.append(res)
         finally:
+            self._client.free_memory(unload_models=True)
             self._housekeeper.cleanup_shared_inputs(
                 [
                     (campaign_asset_name, self._config.campaign_path),

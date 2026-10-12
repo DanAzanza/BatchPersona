@@ -18,10 +18,13 @@ from batchpersona.launcher import (
     detect_comfyui,
     detect_desktop_gui_exe,
     detect_standalone_instance,
+    find_pid_by_port,
     get_desktop_appdata_dir,
     is_server_online,
     launch_server,
     main,
+    stop_server,
+    unload_comfyui_vram,
 )
 
 __all__ = [
@@ -31,10 +34,13 @@ __all__ = [
     "detect_comfyui",
     "detect_desktop_gui_exe",
     "detect_standalone_instance",
+    "find_pid_by_port",
     "get_desktop_appdata_dir",
     "is_server_online",
     "launch_server",
     "main",
+    "stop_server",
+    "unload_comfyui_vram",
 ]
 
 if __name__ == "__main__":

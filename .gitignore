@@ -47,3 +47,5 @@ data_synthetic/
 data/test_eval/
 .env
 .ruff_cache/
+.comfyui_server.pid
+*.pid

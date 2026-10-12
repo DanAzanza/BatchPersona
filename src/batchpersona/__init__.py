@@ -8,8 +8,11 @@ from batchpersona.launcher import (
     ComfyInstance,
     build_headless_command,
     detect_comfyui,
+    find_pid_by_port,
     is_server_online,
     launch_server,
+    stop_server,
+    unload_comfyui_vram,
 )
 from batchpersona.models import (
     COLOR_BOLD,
@@ -57,7 +60,10 @@ __all__ = [
     "configure_logging",
     "create_housekeeper",
     "detect_comfyui",
+    "find_pid_by_port",
     "is_loopback_host",
     "is_server_online",
     "launch_server",
+    "stop_server",
+    "unload_comfyui_vram",
 ]
