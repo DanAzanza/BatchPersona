@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from batchpersona.launcher import ComfyInstance
+from batchpersona.models import JobStatus
 from batchpersona.pipeline import (
     display_menu,
     ensure_server_ready,
@@ -86,15 +86,19 @@ def test_run_commercial_swap_success_flow(tmp_path: Path) -> None:
     (campaign_dir / "lookbook_a.png").touch()
     (campaign_dir / "lookbook_b.jpg").touch()
 
-    mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0))
+    mock_result = MagicMock()
+    mock_result.status = "SUCCESS"
 
     with (
         patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
-        patch("subprocess.run", mock_run),
+        patch("batchpersona.pipeline.BatchSwapper") as mock_swapper_cls,
     ):
+        mock_swapper = mock_swapper_cls.return_value
+        mock_swapper.run_batch.return_value = [mock_result]
+
         code = run_commercial_swap(campaign_dir=campaign_dir)
         assert code == 0
-        assert mock_run.call_count == 2
+        assert mock_swapper_cls.call_count == 2
 
 
 def test_run_commercial_swap_partial_failure(tmp_path: Path) -> None:
@@ -103,14 +107,18 @@ def test_run_commercial_swap_partial_failure(tmp_path: Path) -> None:
     campaign_dir.mkdir()
     (campaign_dir / "lookbook_1.png").touch()
 
-    mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=42))
+    mock_result = MagicMock()
+    mock_result.status = JobStatus.FAILED
 
     with (
         patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
-        patch("subprocess.run", mock_run),
+        patch("batchpersona.pipeline.BatchSwapper") as mock_swapper_cls,
     ):
+        mock_swapper = mock_swapper_cls.return_value
+        mock_swapper.run_batch.return_value = [mock_result]
+
         code = run_commercial_swap(campaign_dir=campaign_dir)
-        assert code == 42
+        assert code == 1
 
 
 def test_run_quick_dry_run_server_offline() -> None:
@@ -122,30 +130,45 @@ def test_run_quick_dry_run_server_offline() -> None:
 def test_run_quick_dry_run_with_missing_synthetic_data(tmp_path: Path) -> None:
     """Verify synthetic data generation is triggered if missing."""
     synthetic_dir = tmp_path / "synthetic"
-    mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0))
+    mock_result = MagicMock()
+    mock_result.status = "SUCCESS"
+
+    def fake_generate(**kwargs: object) -> list[Path]:
+        (synthetic_dir / "input_campaign").mkdir(parents=True, exist_ok=True)
+        (synthetic_dir / "input_models").mkdir(parents=True, exist_ok=True)
+        f1 = synthetic_dir / "input_campaign" / "campaign_summer_lookbook.png"
+        f2 = synthetic_dir / "input_campaign" / "campaign_summer_mask.png"
+        f1.touch()
+        f2.touch()
+        return [f1, f2]
 
     with (
         patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
-        patch("subprocess.run", mock_run),
+        patch("batchpersona.pipeline.generate_all_testdata", side_effect=fake_generate) as mock_gen,
+        patch("batchpersona.pipeline.BatchSwapper") as mock_swapper_cls,
     ):
+        mock_swapper = mock_swapper_cls.return_value
+        mock_swapper.run_batch.return_value = [mock_result]
+
         code = run_quick_dry_run(synthetic_dir=synthetic_dir)
         assert code == 0
-        # 1 call to generate_testdata, 1 call to batch_swapper
-        assert mock_run.call_count == 2
+        assert mock_gen.call_count == 1
+        assert mock_swapper_cls.call_count == 1
 
 
 def test_run_quick_dry_run_generation_failure(tmp_path: Path) -> None:
     """Verify failure to generate synthetic data stops execution."""
     synthetic_dir = tmp_path / "synthetic"
-    mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=5))
 
     with (
         patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
-        patch("subprocess.run", mock_run),
+        patch("batchpersona.pipeline.generate_all_testdata", return_value=[]) as mock_gen,
+        patch("batchpersona.pipeline.BatchSwapper") as mock_swapper_cls,
     ):
         code = run_quick_dry_run(synthetic_dir=synthetic_dir)
-        assert code == 5
-        assert mock_run.call_count == 1
+        assert code == 1
+        assert mock_gen.call_count == 1
+        assert mock_swapper_cls.call_count == 0
 
 
 def test_run_quick_dry_run_existing_data(tmp_path: Path) -> None:
@@ -154,25 +177,32 @@ def test_run_quick_dry_run_existing_data(tmp_path: Path) -> None:
     camp_dir = synthetic_dir / "input_campaign"
     camp_dir.mkdir(parents=True)
     (camp_dir / "campaign_summer_lookbook.png").touch()
+    (camp_dir / "campaign_summer_mask.png").touch()
+    (synthetic_dir / "input_models").mkdir(parents=True)
 
-    mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0))
+    mock_result = MagicMock()
+    mock_result.status = "SUCCESS"
 
     with (
         patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
-        patch("subprocess.run", mock_run),
+        patch("batchpersona.pipeline.generate_all_testdata") as mock_gen,
+        patch("batchpersona.pipeline.BatchSwapper") as mock_swapper_cls,
     ):
+        mock_swapper = mock_swapper_cls.return_value
+        mock_swapper.run_batch.return_value = [mock_result]
+
         code = run_quick_dry_run(synthetic_dir=synthetic_dir)
         assert code == 0
-        assert mock_run.call_count == 1
+        assert mock_gen.call_count == 0
+        assert mock_swapper_cls.call_count == 1
 
 
 def test_run_quality_gate() -> None:
-    """Verify run_quality_gate invokes run_ci_locally.py."""
-    mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0))
-    with patch("subprocess.run", mock_run):
+    """Verify run_quality_gate invokes run_all_ci_stages."""
+    with patch("batchpersona.pipeline.run_all_ci_stages", return_value=0) as mock_ci:
         code = run_quality_gate()
         assert code == 0
-        assert mock_run.call_count == 1
+        assert mock_ci.call_count == 1
 
 
 def test_display_menu(capsys: pytest.CaptureFixture[str]) -> None:
@@ -235,15 +265,11 @@ def test_interactive_menu_loop_keyboard_interrupt() -> None:
 
 
 def test_main_with_cli_args() -> None:
-    """Verify main forwards direct CLI arguments to batch_swapper.py."""
-    mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0))
-    with patch("subprocess.run", mock_run):
+    """Verify main forwards direct CLI arguments to orchestrator_main."""
+    with patch("batchpersona.pipeline.orchestrator_main", return_value=0) as mock_orch:
         code = main(["--campaign", "lookbook.png", "--models-dir", "models"])
         assert code == 0
-        assert mock_run.call_count == 1
-        called_args = mock_run.call_args[0][0]
-        assert "scripts/batch_swapper.py" in called_args[1]
-        assert "--campaign" in called_args
+        mock_orch.assert_called_once_with(["--campaign", "lookbook.png", "--models-dir", "models"])
 
 
 def test_main_without_args() -> None:

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -18,12 +17,17 @@ if sys.platform == "win32":
     if callable(reconfig_stderr):
         reconfig_stderr(encoding="utf-8")
 
+from batchpersona.ci import run_all_ci_stages
+from batchpersona.generator import generate_all_testdata
 from batchpersona.launcher import (
     detect_comfyui,
     is_server_online,
     launch_server,
     stop_server,
 )
+from batchpersona.models import JobStatus, SwapperConfig
+from batchpersona.orchestrator import BatchSwapper
+from batchpersona.orchestrator import main as orchestrator_main
 
 VALID_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 _AUTO_STARTED_SERVER: str | None = None
@@ -100,28 +104,21 @@ def run_commercial_swap(
         print(f"[CAMPAIGN {idx}/{len(campaign_files)}] Processing Lookbook: {campaign_file.name}")
         print("=" * 75)
 
-        cmd = [
-            sys.executable,
-            "scripts/batch_swapper.py",
-            "--server",
-            server,
-            "--campaign",
-            str(campaign_file),
-            "--models-dir",
-            str(models_dir),
-            "--output-dir",
-            str(output_dir),
-            "--workflow",
-            str(workflow_path),
-            "--timeout",
-            str(timeout),
-        ]
-        if skip_existing:
-            cmd.append("--skip-existing")
-
-        result = subprocess.run(cmd)
-        if result.returncode != 0:
-            overall_exit_code = result.returncode
+        config = SwapperConfig(
+            server_address=server,
+            campaign_path=campaign_file,
+            models_dir=models_dir,
+            output_dir=output_dir,
+            workflow_path=workflow_path,
+            timeout_seconds=timeout,
+            skip_existing=skip_existing,
+        )
+        swapper = BatchSwapper(config)
+        results = swapper.run_batch()
+        if not results:
+            overall_exit_code = 2
+        elif any(r.status == JobStatus.FAILED for r in results):
+            overall_exit_code = 1
 
     return overall_exit_code
 
@@ -143,50 +140,32 @@ def run_quick_dry_run(
 
     if not test_lookbook.exists():
         print("[INFO] Generating isolated synthetic test dataset for dry-run...")
-        cmd_gen = [
-            sys.executable,
-            "scripts/generate_testdata.py",
-            "--output-dir",
-            str(synthetic_dir),
-            "--size",
-            "896",
-        ]
-        gen_result = subprocess.run(cmd_gen)
-        if gen_result.returncode != 0:
+        generated = generate_all_testdata(output_root=synthetic_dir, size=896)
+        if not generated:
             print("[ERROR] Failed to generate synthetic test dataset.")
-            return gen_result.returncode
+            return 1
 
-    cmd_swap = [
-        sys.executable,
-        "scripts/batch_swapper.py",
-        "--server",
-        server,
-        "--campaign",
-        str(test_lookbook),
-        "--mask",
-        str(test_mask),
-        "--models-dir",
-        str(test_models),
-        "--output-dir",
-        str(test_output),
-        "--workflow",
-        "workflows/model_swap_composite_api.json",
-        "--market-tag",
-        "test",
-        "--timeout",
-        str(timeout),
-    ]
-
-    result = subprocess.run(cmd_swap)
-    return result.returncode
+    config = SwapperConfig(
+        server_address=server,
+        campaign_path=test_lookbook,
+        mask_path=test_mask,
+        models_dir=test_models,
+        output_dir=test_output,
+        workflow_path=Path("workflows/model_swap_composite_api.json"),
+        market_tag="test",
+        timeout_seconds=timeout,
+    )
+    swapper = BatchSwapper(config)
+    results = swapper.run_batch()
+    if not results:
+        return 2
+    return 1 if any(r.status == JobStatus.FAILED for r in results) else 0
 
 
 def run_quality_gate() -> int:
     """Execute complete local CI test suite and verification."""
     print("\n[RUNNING] Running Complete Quality Gate and CI Verification locally...")
-    cmd = [sys.executable, "scripts/run_ci_locally.py"]
-    result = subprocess.run(cmd)
-    return result.returncode
+    return run_all_ci_stages()
 
 
 def display_menu(server: str) -> None:
@@ -265,8 +244,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # Direct pass-through if batch_swapper arguments are passed
     if argv:
-        cmd = [sys.executable, "scripts/batch_swapper.py", *argv]
-        return subprocess.run(cmd).returncode
+        try:
+            orchestrator_main(argv)
+            return 0
+        except SystemExit as exc:
+            return exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
 
     default_server = os.environ.get("COMFYUI_SERVER", "127.0.0.1:8000")
     return interactive_menu_loop(default_server)

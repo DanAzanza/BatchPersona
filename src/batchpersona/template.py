@@ -123,9 +123,17 @@ class WorkflowTemplate:
                 ):
                     node_def.setdefault("inputs", {})["resolution"] = int(resolution)
 
+        # Identify negative conditioning node IDs via KSampler links
+        negative_node_ids: set[str] = set()
+        for node in patched.values():
+            if isinstance(node, dict) and "KSampler" in str(node.get("class_type", "")):
+                neg_link = node.get("inputs", {}).get("negative")
+                if isinstance(neg_link, list) and neg_link:
+                    negative_node_ids.add(str(neg_link[0]))
+
         if prompt is not None and prompt.strip():
             user_prompt = prompt.strip()
-            for node_def in patched.values():
+            for node_id, node_def in patched.items():
                 if isinstance(node_def, dict):
                     class_type = node_def.get("class_type")
                     if class_type == "TextEncodeQwenImage21":
@@ -138,18 +146,21 @@ class WorkflowTemplate:
                             )
                         node_def.setdefault("inputs", {})["prompt"] = final_prompt
                     elif class_type == "CLIPTextEncode":
-                        # Only override positive prompt (avoid overwriting negative prompt)
-                        current_text = str(node_def.get("inputs", {}).get("text", "")).lower()
-                        negative_indicators = [
-                            "distorted",
-                            "blurry",
-                            "artifacts",
-                            "bad anatomy",
-                            "negative",
-                        ]
-                        is_negative = any(ind in current_text for ind in negative_indicators)
-                        if not is_negative:
-                            node_def.setdefault("inputs", {})["text"] = user_prompt
+                        # Do not override negative conditioning nodes
+                        if node_id in negative_node_ids:
+                            continue
+                        if not negative_node_ids:
+                            current_text = str(node_def.get("inputs", {}).get("text", "")).lower()
+                            negative_indicators = [
+                                "distorted",
+                                "blurry",
+                                "artifacts",
+                                "bad anatomy",
+                                "negative",
+                            ]
+                            if any(ind in current_text for ind in negative_indicators):
+                                continue
+                        node_def.setdefault("inputs", {})["text"] = user_prompt
 
         return patched
 
@@ -161,13 +172,19 @@ class WorkflowTemplate:
         """Recursively scan dict/list in-place and replace placeholder string tokens."""
         if isinstance(target, dict):
             for key, val in target.items():
-                if isinstance(val, str) and val in placeholders:
-                    target[key] = placeholders[val]
+                if isinstance(val, str):
+                    for ph, repl in placeholders.items():
+                        if ph in val:
+                            val = val.replace(ph, repl)
+                    target[key] = val
                 elif isinstance(val, (dict, list)):
                     self._substitute_placeholders_recursive(val, placeholders)
         elif isinstance(target, list):
             for i, val in enumerate(target):
-                if isinstance(val, str) and val in placeholders:
-                    target[i] = placeholders[val]
+                if isinstance(val, str):
+                    for ph, repl in placeholders.items():
+                        if ph in val:
+                            val = val.replace(ph, repl)
+                    target[i] = val
                 elif isinstance(val, (dict, list)):
                     self._substitute_placeholders_recursive(val, placeholders)

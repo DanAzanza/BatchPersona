@@ -21,6 +21,7 @@ from batchpersona.models import (
     ComfyExecutionError,
     ComfyTimeoutError,
     OutputAsset,
+    normalize_server_address,
 )
 
 LOGGER = logging.getLogger("batch_swapper.client")
@@ -35,7 +36,7 @@ class ComfyUIClient:
         session: requests.Session | None = None,
         ws_factory: Callable[[str, float], Any] | None = None,
     ) -> None:
-        self._server = server_address.rstrip("/")
+        self._server = normalize_server_address(server_address)
         self._http_base = f"http://{self._server}"
         self._ws_base = f"ws://{self._server}"
         self._session = session or requests.Session()

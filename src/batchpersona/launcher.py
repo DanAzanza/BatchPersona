@@ -15,6 +15,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from batchpersona.models import normalize_server_address
+
 PID_FILE_NAME = ".comfyui_server.pid"
 _ACTIVE_SERVER_PROCESS: subprocess.Popen[Any] | None = None
 
@@ -285,7 +287,8 @@ def detect_comfyui() -> ComfyInstance | None:
 
 def is_server_online(server: str = "127.0.0.1:8000", timeout: float = 1.5) -> bool:
     """Check if ComfyUI server is responding to /system_stats."""
-    url = f"http://{server}/system_stats"
+    clean_server = normalize_server_address(server)
+    url = f"http://{clean_server}/system_stats"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "BatchPersona-Launcher"})
         with urllib.request.urlopen(req, timeout=timeout) as response:
@@ -333,15 +336,16 @@ def launch_server(
     timeout: float = 60.0,
 ) -> bool:
     """Launch the ComfyUI server and wait until it is ready."""
-    if is_server_online(server, timeout=1.0):
-        print(f"[OK] ComfyUI server is already online and responding at {server}.")
+    clean_server = normalize_server_address(server)
+    if is_server_online(clean_server, timeout=1.0):
+        print(f"[OK] ComfyUI server is already online and responding at {clean_server}.")
         return True
 
     # Parse host and port
-    if ":" in server:
-        host, port = server.split(":", 1)
+    if ":" in clean_server:
+        host, port = clean_server.split(":", 1)
     else:
-        host, port = server, "8000"
+        host, port = clean_server, "8000"
 
     if instance.mode == "headless":
         if not instance.python_exe or not instance.main_py:
@@ -387,7 +391,7 @@ def launch_server(
 
         global _ACTIVE_SERVER_PROCESS
         _ACTIVE_SERVER_PROCESS = proc
-        record_server_pid(server, proc.pid)
+        record_server_pid(clean_server, proc.pid)
 
     elif instance.mode == "gui" and instance.gui_exe:
         print(f"[LAUNCH] Starting Comfy Desktop GUI ({instance.gui_exe})...")
@@ -401,20 +405,20 @@ def launch_server(
             proc = subprocess.Popen([str(instance.gui_exe)], start_new_session=True)
 
         _ACTIVE_SERVER_PROCESS = proc
-        record_server_pid(server, proc.pid)
+        record_server_pid(clean_server, proc.pid)
     else:
         print(f"[ERROR] Unsupported instance mode: {instance.mode}")
         return False
 
     # Wait for server initialization
     print(
-        f"[WAITING] Waiting for ComfyUI server to become ready at {server} (timeout: {int(timeout)}s)..."
+        f"[WAITING] Waiting for ComfyUI server to become ready at {clean_server} (timeout: {int(timeout)}s)..."
     )
     start_time = time.monotonic()
     last_dot_time = start_time
 
     while time.monotonic() - start_time < timeout:
-        if is_server_online(server, timeout=1.5):
+        if is_server_online(clean_server, timeout=1.5):
             print("\n[OK] ComfyUI server is online and ready for batch processing!")
             return True
 
@@ -425,7 +429,9 @@ def launch_server(
 
         time.sleep(1.0)
 
-    print(f"\n[TIMEOUT] ComfyUI server at {server} did not respond within {int(timeout)} seconds.")
+    print(
+        f"\n[TIMEOUT] ComfyUI server at {clean_server} did not respond within {int(timeout)} seconds."
+    )
     if instance.mode == "gui":
         print(
             "          Please ensure you have clicked 'Launch' or 'Open' on your instance in the Comfy Desktop window."
@@ -491,22 +497,40 @@ def is_comfyui_process(pid: int) -> bool:
             if not out or "no tasks are running" in out:
                 return False
             first_col = out.split(",")[0].strip('"').lower()
-            return "python" in first_col or "comfy" in first_col
+            return first_col in {
+                "python.exe",
+                "pythonw.exe",
+                "comfyui.exe",
+                "comfy.exe",
+            }
         except OSError:
             return False
     else:
         try:
             with open(f"/proc/{pid}/cmdline", "rb") as f:
-                cmd = f.read().decode("utf-8", errors="replace").lower()
-                return "python" in cmd or "comfy" in cmd
+                raw_bytes = f.read()
+                args = [
+                    a.lower()
+                    for a in raw_bytes.decode("utf-8", errors="replace").split("\x00")
+                    if a
+                ]
+                if not args:
+                    return False
+                exe = os.path.basename(args[0])
+                if "comfy" in exe:
+                    return True
+                if "python" in exe:
+                    return any("comfy" in arg or "main.py" in arg for arg in args[1:])
+                return False
         except (OSError, FileNotFoundError):
             return False
 
 
 def unload_comfyui_vram(server: str = "127.0.0.1:8000", timeout: float = 3.0) -> bool:
     """Send /interrupt and /free signals to ComfyUI to immediately release GPU VRAM."""
-    url_interrupt = f"http://{server}/interrupt"
-    url_free = f"http://{server}/free"
+    clean_server = normalize_server_address(server)
+    url_interrupt = f"http://{clean_server}/interrupt"
+    url_free = f"http://{clean_server}/free"
     headers = {"User-Agent": "BatchPersona-Launcher", "Content-Type": "application/json"}
 
     # 1. Interrupt any active jobs
@@ -544,17 +568,18 @@ def stop_server(
     """
     global _ACTIVE_SERVER_PROCESS
 
-    was_online = is_server_online(server, timeout=1.0)
+    clean_server = normalize_server_address(server)
+    was_online = is_server_online(clean_server, timeout=1.0)
     # If server is already offline and no process is tracked, exit early
-    if not was_online and _ACTIVE_SERVER_PROCESS is None and read_server_pid(server) is None:
+    if not was_online and _ACTIVE_SERVER_PROCESS is None and read_server_pid(clean_server) is None:
         clear_server_pid_file()
-        print(f"[OK] ComfyUI server at {server} is already offline.")
+        print(f"[OK] ComfyUI server at {clean_server} is already offline.")
         return True
 
     # 1. Release GPU VRAM before killing process
     if unload_first and was_online:
-        print(f"[SHUTDOWN] Unloading ComfyUI models and releasing GPU VRAM ({server})...")
-        unload_comfyui_vram(server, timeout=3.0)
+        print(f"[SHUTDOWN] Unloading ComfyUI models and releasing GPU VRAM ({clean_server})...")
+        unload_comfyui_vram(clean_server, timeout=3.0)
         time.sleep(0.5)
 
     # 2. Resolve target PID
@@ -564,10 +589,10 @@ def stop_server(
         pid = _ACTIVE_SERVER_PROCESS.pid
         is_self_spawned = True
     if pid is None:
-        pid = read_server_pid(server)
+        pid = read_server_pid(clean_server)
     if pid is None and was_online:
         try:
-            port = int(server.split(":")[1]) if ":" in server else 8000
+            port = int(clean_server.split(":")[1]) if ":" in clean_server else 8000
             candidate_pid = find_pid_by_port(port)
             if candidate_pid is not None and is_comfyui_process(candidate_pid):
                 pid = candidate_pid
@@ -613,16 +638,16 @@ def stop_server(
     # 4. Confirm server shutdown
     start_time = time.monotonic()
     while time.monotonic() - start_time < timeout:
-        if not is_server_online(server, timeout=1.0):
-            print(f"[OK] ComfyUI server at {server} has been successfully closed.")
+        if not is_server_online(clean_server, timeout=1.0):
+            print(f"[OK] ComfyUI server at {clean_server} has been successfully closed.")
             return True
         time.sleep(0.5)
 
-    if is_server_online(server, timeout=1.0):
-        print(f"[WARNING] ComfyUI server at {server} is still responding.")
+    if is_server_online(clean_server, timeout=1.0):
+        print(f"[WARNING] ComfyUI server at {clean_server} is still responding.")
         return False
 
-    print(f"[OK] ComfyUI server at {server} has stopped.")
+    print(f"[OK] ComfyUI server at {clean_server} has stopped.")
     return True
 
 

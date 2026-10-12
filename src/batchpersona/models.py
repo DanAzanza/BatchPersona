@@ -42,6 +42,18 @@ class ComfyTimeoutError(PipelineError):
     """Exception raised when an execution exceeds the maximum allocated duration."""
 
 
+def normalize_server_address(server_address: str) -> str:
+    """Normalize server address string into clean host[:port] without scheme or slashes."""
+    raw = server_address.strip()
+    for prefix in ("http://", "https://", "ws://", "wss://"):
+        if raw.lower().startswith(prefix):
+            raw = raw[len(prefix) :]
+            break
+    # Strip any trailing path or slash
+    raw = raw.split("/")[0].strip()
+    return raw or "127.0.0.1:8188"
+
+
 @dataclass(frozen=True)
 class SwapperConfig:
     """Immutable configuration parameters for the batch swapper."""
@@ -84,6 +96,7 @@ class SwapperConfig:
             )
         if self.resolution is not None and self.resolution <= 0:
             raise ValueError(f"Resolution must be a positive integer, got {self.resolution}")
+        object.__setattr__(self, "server_address", normalize_server_address(self.server_address))
 
     def get_target_path(self, model_file: Path) -> Path:
         """Derive the deterministic output path for a campaign-model pair."""
@@ -112,3 +125,4 @@ class JobResult:
     status: JobStatus
     duration_seconds: float
     error_message: str | None = None
+    market_tag: str = "global"

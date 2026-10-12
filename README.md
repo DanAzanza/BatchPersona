@@ -334,7 +334,7 @@ This sequentially runs:
 1. `ruff check .` (PEP compliance static linting)
 2. `ruff format --check .` (Code style formatting verification)
 3. `pyright src scripts tests` (Static type analysis across src, scripts, tests)
-4. `python scripts/generate_testdata.py --output-dir .ci_local_staging --size 256` (Synthetic data CI smoke test)
+4. `python -m batchpersona.generator --output-dir .ci_local_staging --size 256` (Synthetic data CI smoke test)
 5. `pytest tests --cov=batchpersona --cov=scripts --cov-report=term-missing -v` (Full unit & integration regression suite)
 6. Automatic cleanup of all staging artifacts
 

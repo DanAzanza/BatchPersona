@@ -541,29 +541,29 @@ def parse_cli_args(args: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
-def main() -> None:
+def main(args: Sequence[str] | None = None) -> int:
     """CLI orchestrator entrypoint."""
     configure_logging()
-    args = parse_cli_args()
+    parsed_args = parse_cli_args(args)
 
     config = SwapperConfig(
-        server_address=args.server,
-        campaign_path=args.campaign,
-        mask_path=args.mask,
-        models_dir=args.models_dir,
-        output_dir=args.output_dir,
-        market_tag=args.market_tag,
-        workflow_path=args.workflow,
-        timeout_seconds=args.timeout,
-        model_filter=args.filter,
-        cleanup=args.cleanup,
-        comfy_input_dir=args.comfy_input_dir,
-        comfy_output_dir=args.comfy_output_dir,
-        seed=args.seed,
-        resolution=args.resolution,
-        prompt=args.prompt,
-        skip_existing=args.skip_existing,
-        force=args.force,
+        server_address=parsed_args.server,
+        campaign_path=parsed_args.campaign,
+        mask_path=parsed_args.mask,
+        models_dir=parsed_args.models_dir,
+        output_dir=parsed_args.output_dir,
+        market_tag=parsed_args.market_tag,
+        workflow_path=parsed_args.workflow,
+        timeout_seconds=parsed_args.timeout,
+        model_filter=parsed_args.filter,
+        cleanup=parsed_args.cleanup,
+        comfy_input_dir=parsed_args.comfy_input_dir,
+        comfy_output_dir=parsed_args.comfy_output_dir,
+        seed=parsed_args.seed,
+        resolution=parsed_args.resolution,
+        prompt=parsed_args.prompt,
+        skip_existing=parsed_args.skip_existing,
+        force=parsed_args.force,
     )
 
     swapper = BatchSwapper(config)
@@ -576,4 +576,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

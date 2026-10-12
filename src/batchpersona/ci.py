@@ -77,7 +77,8 @@ def run_all_ci_stages(
     # Stage 4: CI Synthetic Test Data Generation Smoke Test
     ci_gen_cmd = [
         python_executable,
-        "scripts/generate_testdata.py",
+        "-m",
+        "batchpersona.generator",
         "--output-dir",
         str(temp_dir),
         "--size",
