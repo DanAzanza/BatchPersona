@@ -12,7 +12,7 @@ BatchPersona is designed as an industrial-grade, headless batch-processing engin
 
 * **Zero-Artifact Boundary Integrity**: Eliminates the seam halos, edge bleeding, and hair fringes characteristic of classic binary inpainting masks by utilizing full-context multimodal DiT attention.
 * **Deterministic Headless Execution**: Communicates with ComfyUI via low-level REST and WebSocket protocols, converting interactive UI workflows into execution-ready Prompt API graphs without human intervention.
-* **Bounded Resource Utilization**: Guarantees stable continuous execution on consumer-grade high-VRAM GPUs (e.g., NVIDIA GeForce RTX 4060 Ti 16GB) via proactive PyTorch CUDA cache recycling and automatic Out-Of-Memory (OOM) recovery.
+* **Bounded Resource Utilization**: Guarantees stable continuous execution on consumer-grade high-VRAM GPUs (e.g., NVIDIA GeForce RTX 4060 Ti 16GB) via proactive PyTorch CUDA cache recycling and reactive Out-Of-Memory (OOM) eviction.
 * **Fault-Tolerant I/O**: Employs atomic staging file writes (`.part` staging followed by atomic renaming) to ensure zero asset corruption in the event of pipeline interruption.
 
 ### 1.2 Component Topology
@@ -242,7 +242,7 @@ BatchPersona mitigates this through a dual-tiered memory management strategy:
 1. **Proactive Reclamation (`free_memory=True, unload_models=False`)**:
    After each successful swap, the pipeline issues a non-destructive cleanup request to ComfyUI's `/free` endpoint. This calls `torch.cuda.empty_cache()` without evicting the loaded model weights from VRAM, keeping warm-start latency low while defragmenting memory.
 2. **Reactive Eviction (`unload_models=True, free_memory=True`)**:
-   If an iteration encounters an unrecoverable CUDA Out-Of-Memory exception, the pipeline triggers a complete model eviction, forces system garbage collection, waits for VRAM normalization, and automatically retries the failed operation.
+   If an iteration encounters an unrecoverable CUDA Out-Of-Memory exception, the pipeline marks the job as failed, issues a full eviction request (`/free` with model unloads), purges PyTorch CUDA cache allocations, and resets GPU state to allow subsequent batch items to proceed cleanly without cascading hangs.
 
 ---
 
@@ -250,18 +250,20 @@ BatchPersona mitigates this through a dual-tiered memory management strategy:
 
 ### 6.1 Atomic File Staging
 
-To prevent partial, truncated, or zero-byte output files when network streams terminate unexpectedly or disk buffers stall, BatchPersona uses atomic filesystem staging:
+To prevent partial, truncated, or zero-byte output files when network streams terminate unexpectedly or disk buffers stall, BatchPersona uses unique atomic filesystem staging:
 
 ```python
-temp_file = output_path.with_name(f"{output_path.name}.{uuid.uuid4().hex[:8]}.part")
+temp_file = destination.with_suffix(f"{destination.suffix}.{os.getpid()}_{time.time_ns()}.part")
 try:
     with open(temp_file, "wb") as f:
         for chunk in response.iter_content(chunk_size=65536):
-            f.write(chunk)
-    os.replace(temp_file, output_path)  # Atomic on POSIX and NTFS
+            if chunk:
+                f.write(chunk)
+    temp_file.replace(destination)  # Atomic on POSIX and NTFS
 finally:
     if temp_file.exists():
-        temp_file.unlink()
+        with contextlib.suppress(OSError):
+            temp_file.unlink()
 ```
 
 ### 6.2 Centering-Aware Dimension Standardization
@@ -284,7 +286,7 @@ Because ComfyUI's standard `LoadImage` and `SaveImage` nodes enforce sandbox acc
 
 ## 7. Empirical Benchmarks & Operational Performance
 
-The following benchmarks were conducted on a dedicated production workstation running Windows 11, Intel Core i7-13700KF, 64 GB DDR5 RAM, and an NVIDIA GeForce RTX 4060 Ti (16 GB GDDR6).
+The following benchmarks represent empirical workstation reference measurements conducted on a dedicated production workstation running Windows 11, Intel Core i7-13700KF, 64 GB DDR5 RAM, and an NVIDIA GeForce RTX 4060 Ti (16 GB GDDR6). They serve as development baseline figures rather than universal guarantees across arbitrary GPUs or modified workflow graphs.
 
 ### 7.1 Stage-by-Stage Latency Breakdown
 
@@ -303,9 +305,9 @@ The following benchmarks were conducted on a dedicated production workstation ru
 
 | Quality Dimension | Metric | Tooling & Enforcement |
 | :--- | :--- | :--- |
-| **Automated Test Suite** | **108 passing tests** | `pytest` 9.1+ |
-| **Branch Coverage** | **91.46%** (mandatory $\ge 90\%$) | `pytest-cov` with branch analysis |
-| **Static Type Verification** | **0 errors, 0 warnings** | Microsoft Pyright 1.1+ (strict mode) |
+| **Automated Test Suite** | **145 passing tests** | `pytest` 9.1+ |
+| **Branch Coverage** | **91.1%** (mandatory $\ge 90\%$) | `pytest-cov` with branch analysis |
+| **Static Type Verification** | **0 errors, 0 warnings** | Microsoft Pyright 1.1+ (`src`, `scripts`, `tests`) |
 | **Linting & Code Style** | **0 diagnostics** | Astral Ruff (PEP 8, Flake8, Bugbear) |
-| **Python Compatibility** | 3.10, 3.11, 3.12, 3.13 | Cross-version AST verification suite |
-| **Zero-GPU Test Runtime** | **$3.47\text{ s}$** total | Mocked WebSockets & synthetic PIL fixtures |
+| **Python Compatibility** | 3.10, 3.11, 3.12, 3.13, 3.14 | Linux & Windows CI |
+| **Zero-GPU Test Runtime** | **$<10\text{ s}$** total | Mocked WebSockets & synthetic PIL fixtures |

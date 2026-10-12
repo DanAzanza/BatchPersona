@@ -625,6 +625,7 @@ def test_stop_server_posix_signals() -> None:
         patch("batchpersona.launcher.is_server_online", side_effect=[True, False]),
         patch("batchpersona.launcher._ACTIVE_SERVER_PROCESS", None),
         patch("batchpersona.launcher.read_server_pid", return_value=7777),
+        patch("batchpersona.launcher.is_comfyui_process", return_value=True),
         patch("batchpersona.launcher.unload_comfyui_vram", return_value=True),
         patch("sys.platform", "linux"),
         patch("os.kill") as mock_kill,
@@ -641,6 +642,7 @@ def test_stop_server_port_lookup_fallback() -> None:
         patch("batchpersona.launcher._ACTIVE_SERVER_PROCESS", None),
         patch("batchpersona.launcher.read_server_pid", return_value=None),
         patch("batchpersona.launcher.find_pid_by_port", return_value=8888),
+        patch("batchpersona.launcher.is_comfyui_process", return_value=True),
         patch("batchpersona.launcher.unload_comfyui_vram", return_value=True),
         patch("sys.platform", "win32"),
         patch("subprocess.run") as mock_run,
@@ -648,6 +650,24 @@ def test_stop_server_port_lookup_fallback() -> None:
     ):
         assert stop_server("127.0.0.1:8000", timeout=2.0) is True
         assert mock_run.call_count == 1
+
+
+def test_stop_server_skips_unverified_pid() -> None:
+    """Verify stop_server protects non-ComfyUI processes from accidental kill."""
+    with (
+        patch("batchpersona.launcher.is_server_online", return_value=True),
+        patch("batchpersona.launcher._ACTIVE_SERVER_PROCESS", None),
+        patch("batchpersona.launcher.read_server_pid", return_value=9999),
+        patch("batchpersona.launcher.is_comfyui_process", return_value=False),
+        patch("batchpersona.launcher.unload_comfyui_vram", return_value=True),
+        patch("subprocess.run") as mock_run,
+        patch("os.kill") as mock_kill,
+        patch("time.sleep"),
+    ):
+        # Should not attempt kill on unverified process
+        assert stop_server("127.0.0.1:8000", timeout=0.1) is False
+        assert mock_run.call_count == 0
+        assert mock_kill.call_count == 0
 
 
 def test_stop_server_timeout_failure() -> None:

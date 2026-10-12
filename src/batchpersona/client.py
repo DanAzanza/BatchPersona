@@ -5,9 +5,11 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import mimetypes
+import os
 import time
 import types
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
 
@@ -75,15 +77,26 @@ class ComfyUIClient:
             return None
         return None
 
-    def upload_image(self, file_path: Path, image_type: str = "input") -> str:
+    def upload_image(
+        self,
+        file_path: Path,
+        image_type: str = "input",
+        overwrite: bool = False,
+    ) -> str:
         """Upload image to ComfyUI /upload/image endpoint. Returns stored filename."""
         if not file_path.is_file():
             raise FileNotFoundError(f"Input file not found: {file_path}")
 
+        mime_type, _ = mimetypes.guess_type(file_path.name)
+        if not mime_type:
+            mime_type = (
+                "image/png" if file_path.suffix.lower() == ".png" else "application/octet-stream"
+            )
+
         url = f"{self._http_base}/upload/image"
         with open(file_path, "rb") as f:
-            files = {"image": (file_path.name, f, "image/png")}
-            data = {"type": image_type, "overwrite": "true"}
+            files = {"image": (file_path.name, f, mime_type)}
+            data = {"type": image_type, "overwrite": "true" if overwrite else "false"}
             response = self._session.post(url, files=files, data=data, timeout=30.0)
 
         if response.status_code != 200:
@@ -125,7 +138,9 @@ class ComfyUIClient:
             )
 
         destination.parent.mkdir(parents=True, exist_ok=True)
-        temp_dest = destination.with_suffix(f"{destination.suffix}.part")
+        temp_dest = destination.with_suffix(
+            f"{destination.suffix}.{os.getpid()}_{time.time_ns()}.part"
+        )
         try:
             with open(temp_dest, "wb") as f:
                 for chunk in response.iter_content(chunk_size=65536):
@@ -174,16 +189,66 @@ class ComfyUIClient:
     ) -> None:
         self.close()
 
+    @contextlib.contextmanager
+    def open_websocket(self, client_id: str, timeout_seconds: float) -> Generator[Any, None, None]:
+        """Establish and yield a WebSocket connection, ensuring deterministic cleanup."""
+        ws_url = f"{self._ws_base}/ws?clientId={client_id}"
+        ws = self._ws_factory(ws_url, timeout_seconds)
+        try:
+            yield ws
+        finally:
+            try:
+                ws.close()
+            except (websocket.WebSocketException, OSError) as ws_err:
+                LOGGER.debug("Error while closing websocket: %s", ws_err)
+
+    def get_prompt_history_outputs(self, prompt_id: str) -> list[OutputAsset]:
+        """Query /history/{prompt_id} to retrieve output assets directly from execution history."""
+        url = f"{self._http_base}/history/{prompt_id}"
+        try:
+            resp = self._session.get(url, timeout=10.0)
+            if resp.status_code != 200:
+                return []
+            history_data = resp.json()
+            if not isinstance(history_data, dict) or prompt_id not in history_data:
+                return []
+            prompt_entry = history_data[prompt_id]
+            outputs = prompt_entry.get("outputs", {})
+            assets: list[OutputAsset] = []
+            for node_out in outputs.values():
+                if isinstance(node_out, dict):
+                    images = node_out.get("images", [])
+                    for img in images:
+                        if isinstance(img, dict):
+                            assets.append(
+                                OutputAsset(
+                                    filename=img.get("filename", ""),
+                                    subfolder=img.get("subfolder", ""),
+                                    image_type=img.get("type", "output"),
+                                )
+                            )
+            return assets
+        except (requests.RequestException, ValueError, OSError) as e:
+            LOGGER.debug("Could not query /history/%s: %s", prompt_id, e)
+            return []
+
     def track_execution(
         self,
         prompt_id: str,
         client_id: str,
         timeout_seconds: float,
         on_progress: Callable[[int, int, str], None] | None = None,
+        ws: Any | None = None,
     ) -> list[OutputAsset]:
         """Listen to WebSocket events until prompt completes, fails, or times out."""
-        ws_url = f"{self._ws_base}/ws?clientId={client_id}"
-        ws = self._ws_factory(ws_url, timeout_seconds)
+        created_ws = False
+        if ws is None:
+            ws_url = f"{self._ws_base}/ws?clientId={client_id}"
+            active_ws = self._ws_factory(ws_url, timeout_seconds)
+            created_ws = True
+        else:
+            active_ws = ws
+
         start_time = time.time()
         output_assets: list[OutputAsset] = []
 
@@ -197,12 +262,12 @@ class ComfyUIClient:
 
                 # Periodic socket timeout to prevent indefinite hangs on stalled servers
                 remaining = max(0.1, timeout_seconds - elapsed)
-                settimeout_fn = getattr(ws, "settimeout", None)
+                settimeout_fn = getattr(active_ws, "settimeout", None)
                 if callable(settimeout_fn):
                     settimeout_fn(min(2.0, remaining))
 
                 try:
-                    raw_frame = ws.recv()
+                    raw_frame = active_ws.recv()
                 except (
                     websocket.WebSocketTimeoutException,
                     TimeoutError,
@@ -262,9 +327,21 @@ class ComfyUIClient:
                     break
 
         finally:
-            try:
-                ws.close()
-            except (websocket.WebSocketException, OSError) as ws_err:
-                LOGGER.debug("Error while closing websocket: %s", ws_err)
+            if created_ws:
+                try:
+                    active_ws.close()
+                except (websocket.WebSocketException, OSError) as ws_err:
+                    LOGGER.debug("Error while closing websocket: %s", ws_err)
+
+        # Fallback to /history if execution completed but output assets were not intercepted via WS
+        if not output_assets:
+            history_assets = self.get_prompt_history_outputs(prompt_id)
+            if history_assets:
+                LOGGER.info(
+                    "Retrieved %d output asset(s) via /history fallback for %s",
+                    len(history_assets),
+                    prompt_id,
+                )
+                output_assets.extend(history_assets)
 
         return output_assets

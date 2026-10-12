@@ -9,16 +9,10 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import urlparse
-
-# Ensure repository root is on sys.path when executed directly as a script
-REPO_ROOT: Path = Path(__file__).resolve().parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
 LOGGER = logging.getLogger("batch_swapper.housekeeper")
 
@@ -79,6 +73,12 @@ class ComfyUIHousekeeper:
             return
 
         candidate = (self.input_dir / server_asset_name).resolve()
+        if not candidate.is_relative_to(self.input_dir):
+            LOGGER.warning(
+                "Path traversal attempt rejected in record_uploaded_name: %s", server_asset_name
+            )
+            return
+
         if candidate not in self._pre_existing_inputs:
             self._tracked_inputs.add(candidate)
 
@@ -92,6 +92,12 @@ class ComfyUIHousekeeper:
             return False
 
         target = (self.input_dir / model_asset_name).resolve()
+        if not target.is_relative_to(self.input_dir):
+            LOGGER.warning(
+                "Path traversal attempt rejected in cleanup_model_input: %s", model_asset_name
+            )
+            return False
+
         return self._purge_input_asset(target, source_path)
 
     def cleanup_shared_inputs(
@@ -107,6 +113,11 @@ class ComfyUIHousekeeper:
             if not asset_name or not source_path:
                 continue
             target = (self.input_dir / asset_name).resolve()
+            if not target.is_relative_to(self.input_dir):
+                LOGGER.warning(
+                    "Path traversal attempt rejected in cleanup_shared_inputs: %s", asset_name
+                )
+                continue
             if self._purge_input_asset(target, source_path):
                 purged_count += 1
 
@@ -128,6 +139,14 @@ class ComfyUIHousekeeper:
             else (self.output_dir / asset_filename).resolve()
         )
 
+        if not intermediate.is_relative_to(self.output_dir):
+            LOGGER.warning(
+                "Path traversal attempt rejected in cleanup_output_asset: subfolder=%s, filename=%s",
+                asset_subfolder,
+                asset_filename,
+            )
+            return False
+
         if not intermediate.exists():
             return False
 
@@ -147,6 +166,11 @@ class ComfyUIHousekeeper:
     def _purge_input_asset(self, target: Path, source_path: Path) -> bool:
         """Internal helper validating safety guards before deleting an input asset."""
         if not target.exists():
+            return False
+
+        # Guard 0: Strictly enforce containment within ComfyUI input directory
+        if self.input_dir is None or not target.is_relative_to(self.input_dir):
+            LOGGER.warning("Target asset is outside ComfyUI input directory: %s", target)
             return False
 
         # Guard 1: Never delete original user source asset
@@ -233,10 +257,7 @@ def create_housekeeper(
     # 2. ComfyUI desktop auto-detection fallback
     if resolved_input is None or resolved_output is None:
         try:
-            try:
-                from batchpersona.launcher import detect_comfyui
-            except ImportError:
-                from scripts.launch_comfyui import detect_comfyui
+            from batchpersona.launcher import detect_comfyui
 
             instance = detect_comfyui()
             if instance:

@@ -288,7 +288,9 @@ def test_batch_swapper_with_housekeeper_integration(
     comfy_out.mkdir()
 
     mock_client = MagicMock()
+    mock_client.http_base = "http://127.0.0.1:8000"
     mock_client.check_connection.return_value = True
+    mock_client.get_registered_node_types.return_value = {"LoadImage", "SaveImage"}
     mock_client.upload_image.side_effect = lambda p: p.name
     mock_client.queue_prompt.return_value = "job_123"
     mock_client.track_execution.return_value = [
@@ -328,3 +330,64 @@ def test_batch_swapper_with_housekeeper_integration(
     assert spy_cleanup_output.call_count == 1
     assert spy_cleanup_model.call_count == 1
     assert spy_cleanup_shared.call_count == 1
+
+
+def test_housekeeper_path_traversal_guards(tmp_path: Path) -> None:
+    """Verify housekeeper rejects path traversal attempts in input and output directories."""
+    input_dir = tmp_path / "comfy_input"
+    output_dir = tmp_path / "comfy_output"
+    outside_dir = tmp_path / "outside"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    outside_dir.mkdir()
+
+    sensitive_file = outside_dir / "secret.txt"
+    sensitive_file.write_text("classified", encoding="utf-8")
+
+    housekeeper = ComfyUIHousekeeper(input_dir=input_dir, output_dir=output_dir, enabled=True)
+
+    # 1. record_uploaded_name with traversal
+    housekeeper.record_uploaded_name("../outside/secret.txt")
+    assert sensitive_file.resolve() not in housekeeper._tracked_inputs
+
+    # 2. cleanup_model_input with traversal
+    source_img = tmp_path / "source.png"
+    source_img.write_bytes(b"data")
+    assert housekeeper.cleanup_model_input("../outside/secret.txt", source_img) is False
+    assert sensitive_file.exists()
+
+    # 3. cleanup_shared_inputs with traversal
+    purged = housekeeper.cleanup_shared_inputs([("../outside/secret.txt", source_img)])
+    assert purged == 0
+    assert sensitive_file.exists()
+
+    # 4. cleanup_output_asset with subfolder traversal
+    final_dest = tmp_path / "final.png"
+    assert (
+        housekeeper.cleanup_output_asset(
+            asset_filename="secret.txt",
+            asset_subfolder="../outside",
+            final_target=final_dest,
+        )
+        is False
+    )
+    assert sensitive_file.exists()
+
+
+def test_housekeeper_untracked_input_and_safe_delete(tmp_path: Path) -> None:
+    """Verify housekeeper rejects untracked inputs and handles FileNotFoundError cleanly."""
+    comfy_input = tmp_path / "comfy_input"
+    comfy_input.mkdir()
+    untracked = comfy_input / "untracked.png"
+    untracked.write_bytes(b"data")
+
+    housekeeper = ComfyUIHousekeeper(input_dir=comfy_input, enabled=True)
+    source_file = tmp_path / "source.png"
+    source_file.write_bytes(b"source")
+    # Target not in _tracked_inputs
+    assert housekeeper._purge_input_asset(untracked, source_file) is False
+    assert untracked.exists()
+
+    # _safe_delete on already deleted file returns True without error
+    non_existent = comfy_input / "ghost.png"
+    assert housekeeper._safe_delete(non_existent) is True

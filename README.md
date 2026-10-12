@@ -8,7 +8,7 @@
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%2F%20WebSocket-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Architecture: DiT](https://img.shields.io/badge/Diffusion-Qwen%20Image%202.1%20DiT-purple.svg)](docs/ARCHITECTURE.md)
 [![Coverage: 91% Branch](https://img.shields.io/badge/test%20coverage-91%25%20branch-brightgreen.svg)](tests/)
-[![Tests: 135 Passed](https://img.shields.io/badge/tests-135%20passed-success.svg)](tests/)
+[![Tests: 145 Passed](https://img.shields.io/badge/tests-145%20passed-success.svg)](tests/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -18,7 +18,7 @@
 
 In multi-market advertising and e-commerce lookbook production, localizing campaigns for distinct demographics (APAC, LATAM, EMEA, North America) traditionally requires either costly reshoots or manual compositing by digital artists.
 
-**BatchPersona** automates this end-to-end through a headless, resilient CLI pipeline. Given a single base campaign lookbook (photographed in studio with styling, tailoring, and lighting) and a directory of target reference model portraits, the pipeline sequentially swaps the subject's identity, face, skin tone, and hair while **strictly preserving 100% of the apparel, tailoring, accessories, and studio background**.
+**BatchPersona** automates this end-to-end through a headless, resilient CLI pipeline. Given a single base campaign lookbook (photographed in studio with styling, tailoring, and lighting) and a directory of target reference model portraits, the pipeline sequentially swaps the subject's identity, face, skin tone, and hair while **preserving the apparel, tailoring, accessories, and studio background with high semantic fidelity**.
 
 ```
 Base Campaign Asset (Full-Body Lookbook)
@@ -136,7 +136,7 @@ sequenceDiagram
 ```text
 BatchPersona/
 ├── .github/
-│   └── workflows/ci.yml         # Multi-platform (Linux/Windows) CI quality gate
+│   └── workflows/ci.yml         # Linux (Ubuntu / Python 3.12) CI quality gate
 ├── data/
 │   ├── input_campaign/          # Standardized 896x1152 fashion lookbooks
 │   │   ├── campaign_fashion_female.png
@@ -176,7 +176,7 @@ BatchPersona/
 │   ├── prepare_fullbody_dataset.py # Forwarding shim -> batchpersona.preprocess
 │   ├── run_ci_locally.py        # Forwarding shim -> batchpersona.ci
 │   └── run_pipeline.py          # Forwarding shim -> batchpersona.pipeline
-├── tests/                       # 🧪 Automated test suites (135 tests)
+├── tests/                       # 🧪 Automated test suites (145 tests)
 │   ├── test_batch_swapper.py    # Batch swapper, skip-existing & node validation tests
 │   ├── test_ci_parity.py        # CI parity, AST compatibility & packaging checks
 │   ├── test_housekeeper.py      # Storage housekeeping & safety guard tests
@@ -297,7 +297,7 @@ batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models
 | `--models-dir` | `Path` | *Required* | Directory containing target model reference portraits. |
 | `--output-dir` | `Path` | `data/output` | Destination directory for localized campaign assets. |
 | `--workflow` | `Path` | `workflows/model_swap_qwen21_maskless_api.json` | ComfyUI API prompt JSON template. |
-| `--market-tag` | `str` | `global` | Campaign market identifier for output naming (`apac`, `latam`, `emea`). |
+| `--market-tag` | `str` | `global` | Campaign market identifier metadata (`apac`, `latam`, `emea`). Note: output filenames strictly follow `<campaign>_<model>.png`. |
 | `--mask` | `Path` | `None` | Path to optional manual segmentation mask. |
 | `--filter` | `str` | `*` | Glob pattern to filter models inside `--models-dir` (e.g. `*east_asia*`). |
 | `--timeout` | `float` | `300.0` | Execution timeout in seconds per individual asset. |
@@ -314,7 +314,7 @@ batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models
 
 ## 🧪 Verification & Test Suite
 
-The automated test suite provides **91% branch coverage (119 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
+The automated test suite provides **91% branch coverage (145 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
 
 Run the complete test suite with coverage report:
 
@@ -333,26 +333,38 @@ python scripts/run_ci_locally.py
 This sequentially runs:
 1. `ruff check .` (PEP compliance static linting)
 2. `ruff format --check .` (Code style formatting verification)
-3. `pyright src scripts tests` (Strict static type analysis)
+3. `pyright src scripts tests` (Static type analysis across src, scripts, tests)
 4. `python scripts/generate_testdata.py --output-dir .ci_local_staging --size 256` (Synthetic data CI smoke test)
 5. `pytest tests --cov=batchpersona --cov=scripts --cov-report=term-missing -v` (Full unit & integration regression suite)
 6. Automatic cleanup of all staging artifacts
 
 ### Linting & Static Typing Quality Gate
 
-Verify compliance with strict PEP standards and strict static typing:
+Verify compliance with strict PEP standards and static typing:
 
 ```bash
 # Code style and linting (0 warnings)
 python -m ruff check .
 python -m ruff format --check .
 
-# Strict static type analysis (0 errors, 0 warnings)
+# Static type analysis across src, scripts, and tests (0 errors, 0 warnings)
 python -m pyright src scripts tests
 ```
 
 ---
 
-## ⚖️ License
+## ⚖️ Legal, Ethical & AI Transparency Notice
+
+### EU AI Act Compliance (Article 50)
+* **Synthetic Media Transparency**: In accordance with Article 50 of the European Union Artificial Intelligence Act (effective August 2026), deployers of AI systems that generate or manipulate image content depicting real persons (deepfakes / persona replacements) must **disclose that the content has been artificially generated or manipulated**.
+* **Provenance & Metadata**: Commercial deliverables generated by BatchPersona should incorporate machine-readable provenance metadata (such as C2PA Content Credentials or embedded XMP metadata tags) indicating generative persona synthesis.
+
+### Model Rights & Informed Consent
+* Replacing human likenesses in advertising campaigns requires explicit, documented contractual consent from all participating human models whose physical appearance or photographic likeness is utilized as conditioning input.
+* Do not utilize likeness assets of individuals without verifiable commercial authorization.
+
+---
+
+## 📄 License
 
 Distributed under the **MIT License**. See `LICENSE` for details.

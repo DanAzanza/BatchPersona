@@ -475,6 +475,34 @@ def find_pid_by_port(port: int) -> int | None:
     return None
 
 
+def is_comfyui_process(pid: int) -> bool:
+    """Verify whether a PID belongs to a Python or ComfyUI process."""
+    if pid <= 4:
+        return False
+    if sys.platform == "win32":
+        try:
+            res = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            out = res.stdout.strip().lower()
+            if not out or "no tasks are running" in out:
+                return False
+            first_col = out.split(",")[0].strip('"').lower()
+            return "python" in first_col or "comfy" in first_col
+        except OSError:
+            return False
+    else:
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmd = f.read().decode("utf-8", errors="replace").lower()
+                return "python" in cmd or "comfy" in cmd
+        except (OSError, FileNotFoundError):
+            return False
+
+
 def unload_comfyui_vram(server: str = "127.0.0.1:8000", timeout: float = 3.0) -> bool:
     """Send /interrupt and /free signals to ComfyUI to immediately release GPU VRAM."""
     url_interrupt = f"http://{server}/interrupt"
@@ -531,40 +559,49 @@ def stop_server(
 
     # 2. Resolve target PID
     pid: int | None = None
+    is_self_spawned = False
     if _ACTIVE_SERVER_PROCESS is not None:
         pid = _ACTIVE_SERVER_PROCESS.pid
+        is_self_spawned = True
     if pid is None:
         pid = read_server_pid(server)
-    if pid is None:
+    if pid is None and was_online:
         try:
             port = int(server.split(":")[1]) if ":" in server else 8000
-            pid = find_pid_by_port(port)
+            candidate_pid = find_pid_by_port(port)
+            if candidate_pid is not None and is_comfyui_process(candidate_pid):
+                pid = candidate_pid
         except ValueError:
             pid = None
 
     # 3. Terminate process tree
     if pid is not None:
-        print(f"[SHUTDOWN] Terminating ComfyUI server process (PID: {pid})...")
-        if sys.platform == "win32":
-            try:
-                subprocess.run(
-                    ["taskkill", "/F", "/T", "/PID", str(pid)],
-                    capture_output=True,
-                    check=False,
-                )
-            except OSError as e:
-                print(f"[WARNING] taskkill failed: {e}")
+        if not is_self_spawned and not is_comfyui_process(pid):
+            print(
+                f"[WARNING] PID {pid} is not a verified ComfyUI/Python process; skipping termination to prevent collateral damage."
+            )
         else:
-            try:
-                import signal
+            print(f"[SHUTDOWN] Terminating ComfyUI server process (PID: {pid})...")
+            if sys.platform == "win32":
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(pid)],
+                        capture_output=True,
+                        check=False,
+                    )
+                except OSError as e:
+                    print(f"[WARNING] taskkill failed: {e}")
+            else:
+                try:
+                    import signal
 
-                os.kill(pid, signal.SIGTERM)
-                time.sleep(0.5)
-                sigkill = getattr(signal, "SIGKILL", signal.SIGTERM)
-                with contextlib.suppress(OSError):
-                    os.kill(pid, sigkill)
-            except OSError:
-                pass
+                    os.kill(pid, signal.SIGTERM)
+                    time.sleep(0.5)
+                    sigkill = getattr(signal, "SIGKILL", signal.SIGTERM)
+                    with contextlib.suppress(OSError):
+                        os.kill(pid, sigkill)
+                except OSError:
+                    pass
 
     if _ACTIVE_SERVER_PROCESS is not None:
         with contextlib.suppress(OSError):

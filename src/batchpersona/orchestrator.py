@@ -95,21 +95,21 @@ class BatchSwapper:
         """Verify that ComfyUI server has all required custom nodes installed before execution."""
         required = self._template.get_required_node_types()
         available = self._client.get_registered_node_types()
-        if available is not None and isinstance(available, (set, frozenset, list, tuple)):
-            available_set = set(available)
-            missing = required - available_set
-            if missing:
-                missing_str = ", ".join(sorted(missing))
-                server_name = getattr(
-                    self._client, "http_base", getattr(self._client, "_http_base", "ComfyUI")
-                )
-                raise ComfyAPIError(
-                    f"ComfyUI server at {server_name} is missing required custom node type(s):\n"
-                    f"  Missing: {missing_str}\n"
-                    f"Troubleshooting:\n"
-                    f"  1. Install the missing custom node package(s) via ComfyUI Manager or git.\n"
-                    f"  2. Restart ComfyUI to register the newly installed nodes."
-                )
+        if available is None:
+            raise ComfyAPIError(
+                f"Cannot query ComfyUI /object_info at {self._client.http_base} to validate required custom nodes.\n"
+                f"Verify the server is running and reachable."
+            )
+        missing = required - available
+        if missing:
+            missing_str = ", ".join(sorted(missing))
+            raise ComfyAPIError(
+                f"ComfyUI server at {self._client.http_base} is missing required custom node type(s):\n"
+                f"  Missing: {missing_str}\n"
+                f"Troubleshooting:\n"
+                f"  1. Install the missing custom node package(s) via ComfyUI Manager or git.\n"
+                f"  2. Restart ComfyUI to register the newly installed nodes."
+            )
 
     def _render_progress_bar(self, step: int, max_steps: int, node: str) -> None:
         """Render in-place terminal progress bar or structured log in headless/CI environments."""
@@ -144,9 +144,8 @@ class BatchSwapper:
         mask_asset_name: str | None,
     ) -> JobResult:
         """Execute single model replacement job sequentially."""
-        model_stem = model_file.stem
-        output_prefix = f"{self._config.campaign_path.stem}_{model_stem}"
-        final_target = self._config.output_dir / f"{output_prefix}.png"
+        output_prefix = self._config.get_output_prefix(model_file)
+        final_target = self._config.get_target_path(model_file)
 
         # Check skip-existing guard before starting job
         if (
@@ -200,17 +199,19 @@ class BatchSwapper:
                 prompt=self._config.prompt,
             )
 
-            # 3. Queue prompt
-            prompt_id = self._client.queue_prompt(prompt_payload, client_id=client_id)
-            LOGGER.info("Prompt accepted by ComfyUI. Assigned ID: %s", prompt_id)
+            # 3. Connect WebSocket BEFORE queueing prompt to eliminate race conditions
+            with self._client.open_websocket(client_id, self._config.timeout_seconds) as ws:
+                prompt_id = self._client.queue_prompt(prompt_payload, client_id=client_id)
+                LOGGER.info("Prompt accepted by ComfyUI. Assigned ID: %s", prompt_id)
 
-            # 4. Stream execution events
-            outputs = self._client.track_execution(
-                prompt_id=prompt_id,
-                client_id=client_id,
-                timeout_seconds=self._config.timeout_seconds,
-                on_progress=self._render_progress_bar,
-            )
+                # 4. Stream execution events
+                outputs = self._client.track_execution(
+                    prompt_id=prompt_id,
+                    client_id=client_id,
+                    timeout_seconds=self._config.timeout_seconds,
+                    on_progress=self._render_progress_bar,
+                    ws=ws,
+                )
             # Clear line after progress
             if sys.stdout.isatty():
                 sys.stdout.write("\r" + " " * 70 + "\r")
@@ -304,15 +305,8 @@ class BatchSwapper:
                 m
                 for m in model_files
                 if not (
-                    (
-                        self._config.output_dir / f"{self._config.campaign_path.stem}_{m.stem}.png"
-                    ).is_file()
-                    and (
-                        self._config.output_dir / f"{self._config.campaign_path.stem}_{m.stem}.png"
-                    )
-                    .stat()
-                    .st_size
-                    > 0
+                    self._config.get_target_path(m).is_file()
+                    and self._config.get_target_path(m).stat().st_size > 0
                 )
             ]
             if not pending_models:
@@ -326,8 +320,7 @@ class BatchSwapper:
                 results = [
                     JobResult(
                         model_name=m.name,
-                        output_path=self._config.output_dir
-                        / f"{self._config.campaign_path.stem}_{m.stem}.png",
+                        output_path=self._config.get_target_path(m),
                         status=JobStatus.SKIPPED,
                         duration_seconds=0.0,
                     )
@@ -338,9 +331,7 @@ class BatchSwapper:
 
         # Pre-flight ComfyUI server connectivity check
         if not self._client.check_connection():
-            server_addr = getattr(
-                self._client, "http_base", getattr(self._client, "_http_base", "ComfyUI")
-            )
+            server_addr = self._client.http_base
             raise ComfyAPIError(
                 f"Cannot connect to ComfyUI at {server_addr}.\n"
                 f"Troubleshooting tips:\n"

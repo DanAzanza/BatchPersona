@@ -18,24 +18,12 @@ if sys.platform == "win32":
     if callable(reconfig_stderr):
         reconfig_stderr(encoding="utf-8")
 
-REPO_ROOT: Path = Path(__file__).resolve().parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-try:
-    from batchpersona.launcher import (
-        detect_comfyui,
-        is_server_online,
-        launch_server,
-        stop_server,
-    )
-except ImportError:
-    from scripts.launch_comfyui import (  # type: ignore
-        detect_comfyui,
-        is_server_online,
-        launch_server,
-        stop_server,
-    )
+from batchpersona.launcher import (
+    detect_comfyui,
+    is_server_online,
+    launch_server,
+    stop_server,
+)
 
 VALID_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 _AUTO_STARTED_SERVER: str | None = None

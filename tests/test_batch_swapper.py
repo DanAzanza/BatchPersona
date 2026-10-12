@@ -6,10 +6,12 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 import requests
+import websocket
 from PIL import Image
 
 from scripts.batch_swapper import (
@@ -49,6 +51,31 @@ class MockWebSocket:
 
     def close(self) -> None:
         self.closed = True
+
+
+def make_mock_client(**overrides: Any) -> MagicMock:
+    """Create a mock conforming strictly to ComfyUIClient interface."""
+    client = MagicMock(spec=ComfyUIClient)
+    client.http_base = overrides.get("http_base", "http://127.0.0.1:8188")
+    client.server_address = overrides.get("server_address", "127.0.0.1:8188")
+    client.check_connection.return_value = overrides.get("check_connection", True)
+    client.get_registered_node_types.return_value = overrides.get(
+        "registered_nodes",
+        {
+            "LoadImage",
+            "SaveImage",
+            "KSampler",
+            "VAEDecode",
+            "EmptyLatentImage",
+            "CLIPTextEncode",
+            "ImageCompositeMasked",
+            "SpecialCustomNode",
+        },
+    )
+    for k, v in overrides.items():
+        if hasattr(client, k):
+            setattr(client, k, v)
+    return client
 
 
 # ============================================================================
@@ -311,7 +338,7 @@ def test_batch_swapper_auto_pairs_mask(tmp_path: Path) -> None:
         workflow_path=wf_file,
     )
 
-    mock_client = MagicMock(spec=ComfyUIClient)
+    mock_client = make_mock_client()
     mock_client.upload_image.side_effect = lambda p: f"up_{p.name}"
     mock_client.queue_prompt.return_value = "p-1"
     mock_client.track_execution.return_value = [OutputAsset("out.png", "", "output")]
@@ -366,6 +393,72 @@ def test_client_upload_image_error(tmp_path: Path) -> None:
         client.upload_image(test_img)
 
 
+def test_client_upload_image_dynamic_mime_and_safe_overwrite(tmp_path: Path) -> None:
+    """Verify upload_image detects JPEG/WebP MIME type and sets overwrite=false by default."""
+    test_jpg = tmp_path / "model.jpg"
+    test_jpg.write_bytes(b"dummy_jpg_bytes")
+
+    mock_session = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"name": "model_001.jpg"}
+    mock_session.post.return_value = mock_resp
+
+    client = ComfyUIClient(server_address="127.0.0.1:8188", session=mock_session)
+    uploaded = client.upload_image(test_jpg)
+
+    assert uploaded == "model_001.jpg"
+    _, kwargs = mock_session.post.call_args
+    files = kwargs["files"]
+    data = kwargs["data"]
+    assert files["image"][2] == "image/jpeg"
+    assert data["overwrite"] == "false"
+
+
+def test_client_open_websocket() -> None:
+    """Verify open_websocket context manager connects and closes websocket reliably."""
+    mock_ws = MagicMock()
+    ws_factory = MagicMock(return_value=mock_ws)
+    client = ComfyUIClient(server_address="127.0.0.1:8188", ws_factory=ws_factory)
+
+    with client.open_websocket("client-123", timeout_seconds=10.0) as ws:
+        assert ws is mock_ws
+        ws_factory.assert_called_once_with("ws://127.0.0.1:8188/ws?clientId=client-123", 10.0)
+
+    mock_ws.close.assert_called_once()
+
+
+def test_client_history_fallback() -> None:
+    """Verify track_execution falls back to /history when websocket finishes with zero output frames."""
+    mock_session = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "p-fast": {
+            "outputs": {
+                "9": {
+                    "images": [{"filename": "cached_out.png", "subfolder": "sub", "type": "output"}]
+                }
+            }
+        }
+    }
+    mock_session.get.return_value = mock_resp
+
+    mock_ws = MockWebSocket(
+        [json.dumps({"type": "executing", "data": {"node": None, "prompt_id": "p-fast"}})]
+    )
+    client = ComfyUIClient(
+        server_address="127.0.0.1:8188",
+        session=mock_session,
+        ws_factory=lambda url, timeout: mock_ws,
+    )
+
+    outputs = client.track_execution("p-fast", "c-1", timeout_seconds=5.0)
+    assert len(outputs) == 1
+    assert outputs[0].filename == "cached_out.png"
+    assert outputs[0].subfolder == "sub"
+
+
 def test_client_queue_prompt_success() -> None:
     """Verify queue_prompt posts payload and extracts prompt_id."""
     mock_session = MagicMock()
@@ -397,7 +490,7 @@ def test_client_download_image(tmp_path: Path) -> None:
 
     assert target.is_file()
     assert target.read_bytes() == b"chunk1chunk2"
-    assert not (tmp_path / "downloaded.png.part").exists()
+    assert not any(tmp_path.glob("*.part"))
 
 
 def test_client_track_execution_success() -> None:
@@ -567,7 +660,7 @@ def test_batch_swapper_end_to_end_mock(tmp_path: Path) -> None:
     )
 
     # Mock ComfyUI Client
-    mock_client = MagicMock(spec=ComfyUIClient)
+    mock_client = make_mock_client()
     mock_client.upload_image.side_effect = lambda path: f"uploaded_{path.name}"
     mock_client.queue_prompt.side_effect = lambda prompt, client_id: f"prompt_{client_id[:8]}"
     mock_client.track_execution.return_value = [
@@ -623,11 +716,17 @@ def test_batch_swapper_handles_partial_failure(tmp_path: Path) -> None:
         workflow_path=workflow_file,
     )
 
-    mock_client = MagicMock(spec=ComfyUIClient)
+    mock_client = make_mock_client()
     mock_client.upload_image.return_value = "img.png"
     mock_client.queue_prompt.return_value = "prompt-1"
 
-    def mock_track(prompt_id: str, client_id: str, timeout_seconds: float, on_progress=None):
+    def mock_track(
+        prompt_id: str,
+        client_id: str,
+        timeout_seconds: float,
+        on_progress=None,
+        **kwargs,
+    ):
         # We can distinguish by inspecting the queue_prompt calls or a counter
         if mock_client.track_execution.call_count == 1:
             raise ComfyExecutionError("OOM on model_fail")
@@ -1338,8 +1437,7 @@ def test_batch_swapper_skip_existing_partial(tmp_path: Path) -> None:
         workflow_path=wf,
         skip_existing=True,
     )
-    mock_client = MagicMock(spec=ComfyUIClient)
-    mock_client.check_connection.return_value = True
+    mock_client = make_mock_client()
     mock_client.upload_image.side_effect = lambda path: f"uploaded_{path.name}"
     mock_client.queue_prompt.return_value = "prompt-123"
     mock_client.track_execution.return_value = [
@@ -1396,8 +1494,7 @@ def test_batch_swapper_force_overrides_skip_existing(tmp_path: Path) -> None:
         skip_existing=True,
         force=True,
     )
-    mock_client = MagicMock(spec=ComfyUIClient)
-    mock_client.check_connection.return_value = True
+    mock_client = make_mock_client()
     mock_client.upload_image.return_value = "up.png"
     mock_client.queue_prompt.return_value = "prompt-id"
     mock_client.track_execution.return_value = [
@@ -1443,8 +1540,7 @@ def test_batch_swapper_skip_existing_corrupt_file_rerendered(tmp_path: Path) -> 
         workflow_path=wf,
         skip_existing=True,
     )
-    mock_client = MagicMock(spec=ComfyUIClient)
-    mock_client.check_connection.return_value = True
+    mock_client = make_mock_client()
     mock_client.upload_image.return_value = "up.png"
     mock_client.queue_prompt.return_value = "prompt-id"
     mock_client.track_execution.return_value = [
@@ -1566,7 +1662,7 @@ def test_batch_swapper_validate_workflow_nodes(tmp_path: Path) -> None:
 
     # 1. Success case: all nodes available
     mock_client_ok = MagicMock(spec=ComfyUIClient)
-    mock_client_ok._http_base = "http://127.0.0.1:8188"
+    mock_client_ok.http_base = "http://127.0.0.1:8188"
     mock_client_ok.get_registered_node_types.return_value = {
         "LoadImage",
         "SpecialCustomNode",
@@ -1577,7 +1673,7 @@ def test_batch_swapper_validate_workflow_nodes(tmp_path: Path) -> None:
 
     # 2. Failure case: SpecialCustomNode missing
     mock_client_missing = MagicMock(spec=ComfyUIClient)
-    mock_client_missing._http_base = "http://127.0.0.1:8188"
+    mock_client_missing.http_base = "http://127.0.0.1:8188"
     mock_client_missing.get_registered_node_types.return_value = {"LoadImage", "KSampler"}
     swapper_missing = BatchSwapper(config=config, client=mock_client_missing)
     with pytest.raises(
@@ -1585,11 +1681,13 @@ def test_batch_swapper_validate_workflow_nodes(tmp_path: Path) -> None:
     ):
         swapper_missing.validate_workflow_nodes()
 
-    # 3. Graceful fallback: endpoint unavailable (returns None)
+    # 3. Fail-closed: endpoint unavailable (returns None) raises ComfyAPIError
     mock_client_none = MagicMock(spec=ComfyUIClient)
+    mock_client_none.http_base = "http://127.0.0.1:8188"
     mock_client_none.get_registered_node_types.return_value = None
     swapper_none = BatchSwapper(config=config, client=mock_client_none)
-    swapper_none.validate_workflow_nodes()
+    with pytest.raises(ComfyAPIError, match=r"(?s)Cannot query ComfyUI /object_info"):
+        swapper_none.validate_workflow_nodes()
 
 
 def test_batch_swapper_run_batch_preflight_node_validation_aborts(tmp_path: Path) -> None:
@@ -1614,6 +1712,7 @@ def test_batch_swapper_run_batch_preflight_node_validation_aborts(tmp_path: Path
     )
 
     mock_client = MagicMock(spec=ComfyUIClient)
+    mock_client.http_base = "http://127.0.0.1:8188"
     mock_client.check_connection.return_value = True
     mock_client.get_registered_node_types.return_value = {"LoadImage", "KSampler"}
 
@@ -1622,3 +1721,82 @@ def test_batch_swapper_run_batch_preflight_node_validation_aborts(tmp_path: Path
         swapper.run_batch()
 
     assert mock_client.upload_image.call_count == 0
+
+
+def test_client_open_websocket_close_exception() -> None:
+    """Verify open_websocket cleanly suppresses and logs websocket close exceptions."""
+    mock_ws = MagicMock()
+    mock_ws.close.side_effect = websocket.WebSocketException("Already closed")
+    client = ComfyUIClient(
+        server_address="127.0.0.1:8188",
+        ws_factory=lambda url, timeout: mock_ws,
+    )
+    with client.open_websocket("client-123", timeout_seconds=5.0) as ws:
+        assert ws is mock_ws
+    assert mock_ws.close.called
+
+
+def test_client_get_prompt_history_outputs_negative_branches() -> None:
+    """Verify get_prompt_history_outputs handles 404, missing data, and network errors gracefully."""
+    mock_session = MagicMock()
+    client = ComfyUIClient(server_address="127.0.0.1:8188", session=mock_session)
+
+    # 1. Status != 200
+    mock_resp_404 = MagicMock(status_code=404)
+    mock_session.get.return_value = mock_resp_404
+    assert client.get_prompt_history_outputs("p1") == []
+
+    # 2. JSON is not dict
+    mock_resp_list = MagicMock(status_code=200)
+    mock_resp_list.json.return_value = ["not", "dict"]
+    mock_session.get.return_value = mock_resp_list
+    assert client.get_prompt_history_outputs("p1") == []
+
+    # 3. Prompt ID missing from JSON dict
+    mock_resp_missing = MagicMock(status_code=200)
+    mock_resp_missing.json.return_value = {"other_p": {}}
+    mock_session.get.return_value = mock_resp_missing
+    assert client.get_prompt_history_outputs("p1") == []
+
+    # 4. RequestException raised
+    mock_session.get.side_effect = requests.RequestException("Timeout")
+    assert client.get_prompt_history_outputs("p1") == []
+
+
+def test_client_upload_image_custom_mime_and_binary_fallback(tmp_path: Path) -> None:
+    """Verify upload_image handles custom MIME type overrides and fallback for unknown extensions."""
+    mock_session = MagicMock()
+    mock_resp = MagicMock(status_code=200)
+    mock_resp.json.return_value = {"name": "test.unknown"}
+    mock_session.post.return_value = mock_resp
+
+    client = ComfyUIClient(server_address="127.0.0.1:8188", session=mock_session)
+    dummy_file = tmp_path / "test.unknown_ext"
+    dummy_file.write_bytes(b"\x00\x01\x02\x03")
+
+    result = client.upload_image(dummy_file, overwrite=True)
+    assert result == "test.unknown"
+    # Verify post was called with application/octet-stream
+    call_args = mock_session.post.call_args
+    files = call_args[1]["files"]
+    file_tuple = files["image"]
+    assert file_tuple[2] == "application/octet-stream"
+
+
+def test_client_track_execution_with_external_ws() -> None:
+    """Verify track_execution accepts externally provided WebSocket and does not close it."""
+    prompt_id = "test-p1"
+    frames: list[str | bytes] = [
+        json.dumps({"type": "executing", "data": {"node": None, "prompt_id": prompt_id}}),
+    ]
+    mock_ws = MockWebSocket(frames)
+    client = ComfyUIClient(server_address="127.0.0.1:8188")
+
+    assets = client.track_execution(
+        prompt_id=prompt_id,
+        client_id="client-1",
+        timeout_seconds=5.0,
+        ws=mock_ws,
+    )
+    assert assets == []
+    assert not mock_ws.closed  # External ws should remain open

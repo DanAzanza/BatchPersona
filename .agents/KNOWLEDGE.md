@@ -44,28 +44,33 @@
 - **Memory Management**: Send `POST /free` (`{"unload_models": False, "free_memory": True}`) between batch iterations to clear PyTorch CUDA caches without checkpoint reload latency.
 
 ## Available Workflow Templates
-- `workflows/model_swap_qwen21_maskless_api.json`: **Flagship** multimodal maskless instruction-based editing workflow using native `TextEncodeQwenImage21` with V3 Autogrow (`images.image_1`, `images.image_2`) and Euler/Simple sampler at native CFG 1.0, preserving 100% of garments, shoes, pose, and background from `<image1>` while seamlessly transferring the model identity from `<image2>`.
+- `workflows/model_swap_qwen21_maskless_api.json`: **Flagship** multimodal maskless instruction-based editing workflow using native `TextEncodeQwenImage21` with V3 Autogrow (`images.image_1`, `images.image_2`) and Euler/Simple sampler at native CFG 1.0, preserving base garments, tailoring, shoes, pose, and background from `<image1>` while seamlessly transferring the model identity from `<image2>`.
 - `workflows/model_swap_api.json`: SDXL inpainting fallback graph with IP-Adapter identity conditioning and attention mask.
 - `workflows/model_swap_auto_mask_api.json`: Autonomous self-masking workflow using on-the-fly BiRefNet foreground segmentation (zero external masks required).
 - `workflows/model_swap_composite_api.json`: Live integration verification workflow using `ImageCompositeMasked` (instant CPU/GPU pipeline execution).
 
 ## Verification & Test Commands
-- Unified Cross-Platform Pipeline Orchestrator: `python -m scripts.run_pipeline`
-- Automated ComfyUI Server Healthcheck & Launcher: `python scripts/launch_comfyui.py --check` / `--detect` / `--launch`
-- Fast test suite with coverage: `python -m pytest tests --cov=scripts --cov-report=term-missing -v`
+- Unified Cross-Platform Pipeline Orchestrator: `python -m batchpersona.pipeline` or `python -m scripts.run_pipeline`
+- Automated ComfyUI Server Healthcheck & Launcher: `python -m batchpersona.launcher --check` / `--detect` / `--launch`
+- Fast test suite with coverage: `python -m pytest tests --cov=batchpersona --cov=scripts --cov-report=term-missing -v`
 - Full local CI Quality Gate: `python scripts/run_ci_locally.py`
 - Code formatting & linting: `python -m ruff check .` and `python -m ruff format --check .`
+- Static type checking: `python -m pyright src scripts tests`
 - Procedural synthetic test data generation: `python scripts/generate_testdata.py`
 - Full-body aspect-ratio preserving dataset standardization: `python scripts/prepare_fullbody_dataset.py`
 - Windows 1-Click Interactive Batch Runner: `run_pipeline.bat`
 - Live batch execution on local ComfyUI instance:
   ```powershell
-  python scripts/batch_swapper.py --server 127.0.0.1:8000 --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models/ --output-dir data/output/ --market-tag apac
+  python -m batchpersona.cli --server 127.0.0.1:8000 --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models/ --output-dir data/output/ --market-tag apac
   ```
 
 ## Commit Scopes
-- `[core]` - Pipeline orchestration and client logic in `scripts/batch_swapper.py`
-- `[data]` - Test data generation and dataset preprocessing in `scripts/`
+- `[core]` - Pipeline core library, client, and configuration models in `src/batchpersona/`
+- `[orchestrator]` - Batch execution and swapping loops in `src/batchpersona/orchestrator.py`
+- `[launcher]` - Server lifecycle, detection, and termination in `src/batchpersona/launcher.py`
+- `[housekeeper]` - Workspace and server asset purging in `src/batchpersona/housekeeper.py`
+- `[ci]` - Continuous integration, parity, and verification scripts in `src/batchpersona/ci.py`
+- `[data]` - Test data generation and dataset preprocessing in `src/batchpersona/` & `scripts/`
 - `[workflow]` - ComfyUI API graph templates in `workflows/`
 - `[test]` - Test fixtures and mock integration tests in `tests/`
 - `[docs]` - Architecture documentation and repository README

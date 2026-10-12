@@ -85,6 +85,14 @@ class SwapperConfig:
         if self.resolution is not None and self.resolution <= 0:
             raise ValueError(f"Resolution must be a positive integer, got {self.resolution}")
 
+    def get_target_path(self, model_file: Path) -> Path:
+        """Derive the deterministic output path for a campaign-model pair."""
+        return self.output_dir / f"{self.campaign_path.stem}_{model_file.stem}.png"
+
+    def get_output_prefix(self, model_file: Path) -> str:
+        """Derive the ComfyUI output filename prefix for a campaign-model pair."""
+        return f"batchpersona_{self.campaign_path.stem}_{model_file.stem}"
+
 
 @dataclass(frozen=True)
 class OutputAsset:
