@@ -70,6 +70,7 @@ def test_batch_swapper_auto_pairs_mask(tmp_path: Path) -> None:
     results = swapper.run_batch()
 
     assert len(results) == 1
+    assert results[0].market_tag == "test"
     uploaded_files = [call[0][0].name for call in mock_client.upload_image.call_args_list]
     assert "lookbook.png" in uploaded_files
     assert "lookbook_mask.png" in uploaded_files

@@ -20,6 +20,9 @@ class MockWebSocket:
             raise StopIteration("No more mock frames")
         return self._frames.pop(0)
 
+    def settimeout(self, timeout: float) -> None:
+        pass
+
     def close(self) -> None:
         self.closed = True
 

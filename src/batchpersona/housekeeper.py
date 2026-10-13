@@ -31,7 +31,7 @@ def is_loopback_host(server: str) -> bool:
         parsed = urlparse(raw)
         host = (parsed.hostname or "").lower()
         return host in LOOPBACK_HOSTS or host.startswith("127.") or host.startswith("::1")
-    except Exception:
+    except ValueError:
         return False
 
 
@@ -265,7 +265,7 @@ def create_housekeeper(
                     resolved_input = instance.input_dir
                 if resolved_output is None and instance.output_dir and instance.output_dir.exists():
                     resolved_output = instance.output_dir
-        except Exception as e:
+        except (ImportError, OSError, ValueError) as e:
             LOGGER.debug("Auto-detecting ComfyUI directories encountered error: %s", e)
 
     if resolved_input or resolved_output:

@@ -250,12 +250,12 @@ class ComfyUIClient:
         else:
             active_ws = ws
 
-        start_time = time.time()
+        start_time = time.monotonic()
         output_assets: list[OutputAsset] = []
 
         try:
             while True:
-                elapsed = time.time() - start_time
+                elapsed = time.monotonic() - start_time
                 if elapsed > timeout_seconds:
                     raise ComfyTimeoutError(
                         f"Execution exceeded timeout limit ({timeout_seconds:.1f}s)"
@@ -263,9 +263,7 @@ class ComfyUIClient:
 
                 # Periodic socket timeout to prevent indefinite hangs on stalled servers
                 remaining = max(0.1, timeout_seconds - elapsed)
-                settimeout_fn = getattr(active_ws, "settimeout", None)
-                if callable(settimeout_fn):
-                    settimeout_fn(min(2.0, remaining))
+                active_ws.settimeout(min(2.0, remaining))
 
                 try:
                     raw_frame = active_ws.recv()
@@ -274,7 +272,7 @@ class ComfyUIClient:
                     TimeoutError,
                     OSError,
                 ) as t_err:
-                    if time.time() - start_time > timeout_seconds:
+                    if time.monotonic() - start_time > timeout_seconds:
                         raise ComfyTimeoutError(
                             f"Execution exceeded timeout limit ({timeout_seconds:.1f}s)"
                         ) from t_err

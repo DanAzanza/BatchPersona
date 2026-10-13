@@ -172,7 +172,7 @@ def detect_comfy_desktop_instance() -> ComfyInstance | None:
                 extra_model_paths=extra_model_paths,
                 extra_args=tuple(extra_args),
             )
-    except Exception:
+    except (json.JSONDecodeError, OSError, TypeError, KeyError):
         return None
     return None
 
@@ -295,7 +295,7 @@ def is_server_online(server: str = "127.0.0.1:8000", timeout: float = 1.5) -> bo
             if response.status == 200:
                 payload = json.loads(response.read().decode("utf-8"))
                 return "devices" in payload or "system" in payload
-    except Exception:
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError, ValueError):
         return False
     return False
 
@@ -538,7 +538,7 @@ def unload_comfyui_vram(server: str = "127.0.0.1:8000", timeout: float = 3.0) ->
         req = urllib.request.Request(url_interrupt, data=b"", headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=timeout):
             pass
-    except Exception:
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         pass
 
     # 2. Trigger memory/model unloading
@@ -547,7 +547,7 @@ def unload_comfyui_vram(server: str = "127.0.0.1:8000", timeout: float = 3.0) ->
         req = urllib.request.Request(url_free, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=timeout) as response:
             return response.status == 200
-    except Exception:
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         return False
 
 

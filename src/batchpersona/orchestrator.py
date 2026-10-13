@@ -165,9 +165,10 @@ class BatchSwapper:
                 output_path=final_target,
                 status=JobStatus.SKIPPED,
                 duration_seconds=0.0,
+                market_tag=self._config.market_tag,
             )
 
-        job_start = time.time()
+        job_start = time.monotonic()
         client_id = str(uuid.uuid4())
         is_oom = False
 
@@ -231,7 +232,7 @@ class BatchSwapper:
                 final_target=final_target,
             )
 
-            elapsed = time.time() - job_start
+            elapsed = time.monotonic() - job_start
 
             LOGGER.info(
                 "%s[PASS]%s Successfully rendered %s (%.2fs)",
@@ -245,6 +246,7 @@ class BatchSwapper:
                 output_path=final_target,
                 status=JobStatus.SUCCESS,
                 duration_seconds=elapsed,
+                market_tag=self._config.market_tag,
             )
 
         except (
@@ -256,7 +258,7 @@ class BatchSwapper:
             RuntimeError,
         ) as e:
             is_oom = "out of memory" in str(e).lower()
-            elapsed = time.time() - job_start
+            elapsed = time.monotonic() - job_start
             sys.stdout.write("\n")
             LOGGER.error(
                 "%s[FAIL]%s Model %s failed: %s",
@@ -272,6 +274,7 @@ class BatchSwapper:
                 status=JobStatus.FAILED,
                 duration_seconds=elapsed,
                 error_message=str(e),
+                market_tag=self._config.market_tag,
             )
         finally:
             self._client.free_memory(unload_models=is_oom)
@@ -323,6 +326,7 @@ class BatchSwapper:
                         output_path=self._config.get_target_path(m),
                         status=JobStatus.SKIPPED,
                         duration_seconds=0.0,
+                        market_tag=self._config.market_tag,
                     )
                     for m in model_files
                 ]
