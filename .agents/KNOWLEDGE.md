@@ -9,6 +9,7 @@
   - Never string-interpolate Windows backslashes into JSON text templates (causes `JSONDecodeError: Invalid \escape`).
   - Set `sys.stdout.reconfigure(encoding='utf-8')` to prevent `UnicodeEncodeError` in Windows consoles.
   - Workspace `G:\` is mounted on Google Drive for Desktop; automated tests must be self-healing against background cloud sync latency.
+  - Development environment must be installed in editable mode (`pip install -e .`) so that `python -m batchpersona` resolves deterministically without relying on ad-hoc `sys.path` hacks.
 
 ## Local ComfyUI Instance Details
 - **Active Instance**: Comfy Desktop running headless API backend at `http://127.0.0.1:8000`.
@@ -30,6 +31,7 @@
   - Match `data.prompt_id == current_prompt_id` to prevent cross-talk on multi-client servers.
   - Completion signal: `executing` event with `data.node is None` and matching `prompt_id`.
   - Error detection: `execution_error` event contains node ID, exception type, and traceback.
+  - Execution timeouts and socket intervals must strictly use `time.monotonic()` to maintain resilience against system clock/NTP adjustments.
 - **Qwen 2.1 DiT Guidance & Prompt Best Practices**:
   - Qwen Image 2.1 uses rectified flow matching with Euler sampler and simple scheduler.
   - Native inference operates at `CFG = 1.0` with `negative_prompt = ""` (pure conditional velocity field evaluation, 25 steps = 25 passes).
@@ -53,6 +55,16 @@
 - Unified Cross-Platform Pipeline Orchestrator: `python -m batchpersona.pipeline` or `python -m scripts.run_pipeline`
 - Automated ComfyUI Server Healthcheck & Launcher: `python -m batchpersona.launcher --check` / `--detect` / `--launch`
 - Fast test suite with coverage: `python -m pytest tests --cov=batchpersona --cov=scripts --cov-report=term-missing -v`
+- Modular test suites (each strictly $< 600$ lines, zero monolithic test files):
+  - `tests/test_client.py` - Low-level HTTP multipart, WebSocket event parsing, and connection lifecycle.
+  - `tests/test_template.py` - Prompt API graph validation, placeholder replacement, and override patching.
+  - `tests/test_orchestrator.py` - Batch execution loop, pre-flight checks, and `--skip-existing` caching.
+  - `tests/test_cli.py` - Command-line parsing, environment overrides, and CLI entrypoint exit codes.
+  - `tests/test_generator.py` - Synthetic PIL image fixtures and dataset preprocessing.
+  - `tests/test_housekeeper.py` - Sandboxed input/output asset cleanup and path traversal prevention.
+  - `tests/test_launch_comfyui.py` - Headless server process supervision and safe termination.
+  - `tests/test_run_pipeline.py` - Interactive console menu and end-to-end execution flow.
+  - `tests/test_ci_parity.py` - Multi-stage GitHub Actions CI equivalence and backward-compatibility shims.
 - Full local CI Quality Gate: `python scripts/run_ci_locally.py`
 - Code formatting & linting: `python -m ruff check .` and `python -m ruff format --check .`
 - Static type checking: `python -m pyright src scripts tests`
