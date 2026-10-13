@@ -2,7 +2,10 @@
 
 ## Runtime & Platform Constraints
 - **Platform**: Windows 11 / PowerShell 7+ host.
-- **Python Runtime**: Python 3.14.5 64-bit (`C:\Users\danie\AppData\Local\Python\pythoncore-3.14-64\python.exe`). Project requires Python >= 3.10 (managed code-first in `pyproject.toml`).
+- **Python Runtime**:
+  - Local host: Python 3.14.5 64-bit (`C:\Users\danie\AppData\Local\Python\pythoncore-3.14-64\python.exe`).
+  - GitHub Actions CI: Python 3.12 across a multi-OS matrix (`ubuntu-latest` and `windows-latest`, defined in `.github/workflows/ci.yml`).
+  - Project requires Python >= 3.10 (managed code-first in `pyproject.toml`).
 - **Windows File Paths & Filesystem**:
   - Always use `pathlib.Path` with POSIX or raw strings when passing paths to APIs.
   - Never string-interpolate Windows backslashes into JSON text templates (causes `JSONDecodeError: Invalid \escape`).
@@ -29,10 +32,13 @@
 
 ## ComfyUI Headless API Patterns & Quirks
 - **Prompt Format**: ComfyUI API endpoint `/prompt` expects a dictionary of node IDs mapping to `class_type` and `inputs`. It does NOT accept the UI graph format (`nodes` / `links`).
-- **Asset Ingestion**: Standard ComfyUI `LoadImage` node does not read arbitrary local file paths; images must be uploaded to ComfyUI's input directory via `POST /upload/image` multipart form, or standard input folder names must be referenced.
-- **WebSocket Protocol**:
+- **Asset Ingestion & `/upload/image` Behavior**:
+  - Standard ComfyUI `LoadImage` node does not read arbitrary local file paths; images must be uploaded to ComfyUI's input directory via `POST /upload/image` multipart form, or standard input folder names must be referenced.
+  - With `overwrite=false` (default), ComfyUI detects existing files and renames duplicates (e.g. `image_1.png`). Always resolve the uploaded asset using the server-returned name (`response.json()["name"]`), never assume the original filename was preserved.
+  - With `overwrite=true`, ComfyUI silently replaces existing files with identical names in the server input directory.
+- **WebSocket Protocol & Event Delivery**:
   - Endpoint: `ws://<server>/ws?clientId=<client_id>`.
-  - Connect WebSocket *before* submitting `POST /prompt` with `client_id` to avoid race conditions.
+  - **Subscribe Before Dispatch & Event-Drop on Cache**: ComfyUI does NOT buffer WebSocket events for uncollected or disconnected `client_id`s; events dispatched while disconnected are permanently discarded. Jobs whose node outputs are cached finish execution in milliseconds (< 10 ms). Connecting WebSocket *after* queuing `POST /prompt` risks missing the `executing` completion signal entirely, causing the client to hang until the socket timeout.
   - Filter out binary frames (binary preview images sent during KSampler execution) before calling `json.loads`.
   - Match `data.prompt_id == current_prompt_id` to prevent cross-talk on multi-client servers.
   - Completion signal: `executing` event with `data.node is None` and matching `prompt_id`.
@@ -45,7 +51,7 @@
   - Strict attribute isolation ("Only transfer the face, facial features, hair, skin tone, and identity of the model in <image2>") and explicit preservation ("Keep all clothing, garments, tailoring, shoes, accessories, pose, and studio background from <image1> completely unchanged. Do not transfer any clothing or footwear from <image2>") prevents footwear and outfit leakage from target models while ensuring seamless identity transfer.
 - **Deterministic Output Naming**:
   - Output files are generated strictly as `<campaign_stem>_<model_stem>.png`.
-  - Never use static market tags (`campaign_global_*`) in batch runners, as subsequent lookbooks will silently overwrite earlier runs.
+  - `--market-tag` is tracked solely as job metadata in `JobResult` and does not mutate export file paths. Never use static market tags (`campaign_global_*`) in batch runners, as subsequent lookbooks will silently overwrite earlier runs.
 - **Attention Masking**: When applying `IPAdapterApply` for face/model identity swap on lookbook images, wire the inpainting mask into `attn_mask` to prevent identity bleeding into background and garments.
 - **Memory Management**: Send `POST /free` (`{"unload_models": False, "free_memory": True}`) between batch iterations to clear PyTorch CUDA caches without checkpoint reload latency.
 - **Smart Housekeeping & Windows NTFS File-Locking**:
@@ -80,9 +86,9 @@
 - Windows 1-Click Interactive Batch Runner: `run_pipeline.bat`
 - Live batch execution on local ComfyUI instance:
   ```powershell
-  python -m batchpersona.orchestrator --server 127.0.0.1:8000 --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models/ --output-dir data/output/ --market-tag apac
+  python -m batchpersona.orchestrator --server 127.0.0.1:8000 --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models/ --output-dir data/output/
   # Or via console entrypoint if installed in editable mode:
-  batchpersona --server 127.0.0.1:8000 --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models/ --output-dir data/output/ --market-tag apac
+  batchpersona --server 127.0.0.1:8000 --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models/ --output-dir data/output/
   ```
 
 ## Commit Scopes
@@ -90,7 +96,7 @@
 - `[orchestrator]` - Batch execution and interactive workflows in `src/batchpersona/orchestrator.py` and `src/batchpersona/pipeline.py`
 - `[launcher]` - Server lifecycle, detection, and termination in `src/batchpersona/launcher.py`
 - `[housekeeper]` - Workspace and server asset purging in `src/batchpersona/housekeeper.py`
-- `[ci]` - Continuous integration, configs, and verification scripts in `src/batchpersona/ci.py`, `scripts/run_ci_locally.py`, `.github/`, and root configs (`pyproject.toml`, `pyrightconfig.json`)
+- `[ci]` - Continuous integration, configs, and verification scripts in `src/batchpersona/ci.py`, `scripts/run_ci_locally.py`, `.github/`, and root configs (`pyproject.toml`)
 - `[data]` - Test data generation and dataset preprocessing in `src/batchpersona/` (`generator.py`, `preprocess.py`) & `scripts/`
 - `[workflow]` - ComfyUI API graph templates in `workflows/`
 - `[test]` - Test fixtures and mock integration tests in `tests/`

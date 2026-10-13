@@ -1,7 +1,0 @@
-{
-  "include": ["src", "scripts", "tests"],
-  "exclude": ["**/__pycache__", ".pytest_cache", ".venv", ".ci_local_staging"],
-  "pythonVersion": "3.10",
-  "reportMissingImports": "none",
-  "reportMissingModuleSource": "none"
-}
