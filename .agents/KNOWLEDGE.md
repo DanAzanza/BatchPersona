@@ -2,17 +2,23 @@
 
 ## Runtime & Platform Constraints
 - **Platform**: Windows 11 / PowerShell 7+ host.
-- **Python Runtime**: Python 3.14.5 64-bit (`C:\Users\danie\AppData\Local\Python\pythoncore-3.14-64\python.exe`).
-- **Dependencies**: `requests`, `websocket-client`, `pillow`, `pytest`, `pytest-mock`, `numpy`.
+- **Python Runtime**: Python 3.14.5 64-bit (`C:\Users\danie\AppData\Local\Python\pythoncore-3.14-64\python.exe`). Project requires Python >= 3.10 (managed code-first in `pyproject.toml`).
 - **Windows File Paths & Filesystem**:
   - Always use `pathlib.Path` with POSIX or raw strings when passing paths to APIs.
   - Never string-interpolate Windows backslashes into JSON text templates (causes `JSONDecodeError: Invalid \escape`).
   - Set `sys.stdout.reconfigure(encoding='utf-8')` to prevent `UnicodeEncodeError` in Windows consoles.
   - Workspace `G:\` is mounted on Google Drive for Desktop; automated tests must be self-healing against background cloud sync latency.
-  - Development environment must be installed in editable mode (`pip install -e .`) so that `python -m batchpersona` resolves deterministically without relying on ad-hoc `sys.path` hacks.
+  - Development environment must be installed in editable mode (`pip install -e .`) so that `python -m batchpersona` and CLI entrypoints resolve deterministically without relying on ad-hoc `sys.path` hacks.
+- **Cross-Platform Subprocess Attributes**:
+  - `subprocess.STARTUPINFO`, `subprocess.STARTF_USESHOWWINDOW`, `subprocess.CREATE_NEW_CONSOLE`, and `subprocess.DETACHED_PROCESS` do not exist in Linux/POSIX CPython builds.
+  - When referencing or simulating Windows-specific process flags in cross-platform code or tests, always resolve them defensively via `getattr(subprocess, "...", None)` to avoid `AttributeError` on POSIX hosts.
 
 ## Local ComfyUI Instance Details
 - **Active Instance**: Comfy Desktop running headless API backend at `http://127.0.0.1:8000`.
+- **Port Gotcha**:
+  - `batchpersona.launcher` defaults to port `8000` (tuned for Comfy Desktop).
+  - `batchpersona.orchestrator` CLI defaults to port `8188` (standard standalone ComfyUI).
+  - When targeting local Comfy Desktop via orchestrator CLI, always pass `--server 127.0.0.1:8000` or export `COMFYUI_SERVER=127.0.0.1:8000`.
 - **Hardware Acceleration**: CUDA 0 - NVIDIA GeForce RTX 4060 Ti (16 GB VRAM).
 - **Model Storage**: `C:\Users\danie\ComfyUI-Shared\models`
   - Diffusion: `diffusion_models/qwen_image_2.1_int8_convrot.safetensors`
@@ -40,10 +46,11 @@
 - **Deterministic Output Naming**:
   - Output files are generated strictly as `<campaign_stem>_<model_stem>.png`.
   - Never use static market tags (`campaign_global_*`) in batch runners, as subsequent lookbooks will silently overwrite earlier runs.
-- **Dynamic Asset Ingestion**:
-  - Both `data/input_campaign` and `data/input_models` dynamically scan for all valid image formats (`.png`, `.jpg`, `.jpeg`, `.webp`) without hardcoded file name prefixes.
 - **Attention Masking**: When applying `IPAdapterApply` for face/model identity swap on lookbook images, wire the inpainting mask into `attn_mask` to prevent identity bleeding into background and garments.
 - **Memory Management**: Send `POST /free` (`{"unload_models": False, "free_memory": True}`) between batch iterations to clear PyTorch CUDA caches without checkpoint reload latency.
+- **Smart Housekeeping & Windows NTFS File-Locking**:
+  - Purging intermediate ComfyUI input/output assets requires bounded micro-retries (3 attempts, 50 ms exponential backoff) due to transient Windows NTFS handle locking (`WinError 32` / `PermissionError`) by ComfyUI or the Windows Search indexer.
+  - Deletion guards must verify canonical paths (`target.resolve() != source.resolve()` and `target.resolve() != export.resolve()`) to prevent self-deletion when campaign or output directories coincide with ComfyUI directories.
 
 ## Available Workflow Templates
 - `workflows/model_swap_qwen21_maskless_api.json`: **Flagship** multimodal maskless instruction-based editing workflow using native `TextEncodeQwenImage21` with V3 Autogrow (`images.image_1`, `images.image_2`) and Euler/Simple sampler at native CFG 1.0, preserving base garments, tailoring, shoes, pose, and background from `<image1>` while seamlessly transferring the model identity from `<image2>`.
@@ -52,8 +59,8 @@
 - `workflows/model_swap_composite_api.json`: Live integration verification workflow using `ImageCompositeMasked` (instant CPU/GPU pipeline execution).
 
 ## Verification & Test Commands
-- Unified Cross-Platform Pipeline Orchestrator: `python -m batchpersona.pipeline` or `python -m scripts.run_pipeline`
-- Automated ComfyUI Server Healthcheck & Launcher: `python -m batchpersona.launcher --check` / `--detect` / `--launch`
+- Unified Cross-Platform Pipeline Orchestrator: `python -m batchpersona.pipeline` or `python -m scripts.run_pipeline` (CLI: `batchpersona-pipeline`)
+- Automated ComfyUI Server Healthcheck & Launcher: `python -m batchpersona.launcher --check` / `--detect` / `--launch` (CLI: `batchpersona-launcher`)
 - Fast test suite with coverage: `python -m pytest tests --cov=batchpersona --cov=scripts --cov-report=term-missing -v`
 - Modular test suites (each strictly $< 600$ lines, zero monolithic test files):
   - `tests/test_client.py` - Low-level HTTP multipart, WebSocket event parsing, and connection lifecycle.
@@ -65,24 +72,26 @@
   - `tests/test_launch_comfyui.py` - Headless server process supervision and safe termination.
   - `tests/test_run_pipeline.py` - Interactive console menu and end-to-end execution flow.
   - `tests/test_ci_parity.py` - Multi-stage GitHub Actions CI equivalence and backward-compatibility shims.
-- Full local CI Quality Gate: `python scripts/run_ci_locally.py`
+- Full local CI Quality Gate: `python scripts/run_ci_locally.py` (CLI: `batchpersona-ci`)
 - Code formatting & linting: `python -m ruff check .` and `python -m ruff format --check .`
 - Static type checking: `python -m pyright src scripts tests`
-- Procedural synthetic test data generation: `python scripts/generate_testdata.py`
-- Full-body aspect-ratio preserving dataset standardization: `python scripts/prepare_fullbody_dataset.py`
+- Procedural synthetic test data generation: `python scripts/generate_testdata.py` (CLI: `batchpersona-testdata`)
+- Full-body aspect-ratio preserving dataset standardization: `python scripts/prepare_fullbody_dataset.py` (CLI: `batchpersona-prep`)
 - Windows 1-Click Interactive Batch Runner: `run_pipeline.bat`
 - Live batch execution on local ComfyUI instance:
   ```powershell
-  python -m batchpersona.cli --server 127.0.0.1:8000 --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models/ --output-dir data/output/ --market-tag apac
+  python -m batchpersona.orchestrator --server 127.0.0.1:8000 --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models/ --output-dir data/output/ --market-tag apac
+  # Or via console entrypoint if installed in editable mode:
+  batchpersona --server 127.0.0.1:8000 --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models/ --output-dir data/output/ --market-tag apac
   ```
 
 ## Commit Scopes
-- `[core]` - Pipeline core library, client, and configuration models in `src/batchpersona/`
-- `[orchestrator]` - Batch execution and swapping loops in `src/batchpersona/orchestrator.py`
+- `[core]` - Pipeline core library, client, and configuration models in `src/batchpersona/` (`client.py`, `models.py`, `template.py`)
+- `[orchestrator]` - Batch execution and interactive workflows in `src/batchpersona/orchestrator.py` and `src/batchpersona/pipeline.py`
 - `[launcher]` - Server lifecycle, detection, and termination in `src/batchpersona/launcher.py`
 - `[housekeeper]` - Workspace and server asset purging in `src/batchpersona/housekeeper.py`
-- `[ci]` - Continuous integration, parity, and verification scripts in `src/batchpersona/ci.py`
-- `[data]` - Test data generation and dataset preprocessing in `src/batchpersona/` & `scripts/`
+- `[ci]` - Continuous integration, configs, and verification scripts in `src/batchpersona/ci.py`, `scripts/run_ci_locally.py`, `.github/`, and root configs (`pyproject.toml`, `pyrightconfig.json`)
+- `[data]` - Test data generation and dataset preprocessing in `src/batchpersona/` (`generator.py`, `preprocess.py`) & `scripts/`
 - `[workflow]` - ComfyUI API graph templates in `workflows/`
 - `[test]` - Test fixtures and mock integration tests in `tests/`
 - `[docs]` - Architecture documentation and repository README
