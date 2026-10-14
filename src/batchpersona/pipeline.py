@@ -25,7 +25,7 @@ from batchpersona.launcher import (
     launch_server,
     stop_server,
 )
-from batchpersona.models import JobStatus, SwapperConfig
+from batchpersona.models import DEFAULT_SERVER_ADDRESS, JobStatus, SwapperConfig
 from batchpersona.orchestrator import BatchSwapper
 from batchpersona.orchestrator import main as orchestrator_main
 
@@ -44,7 +44,7 @@ def cleanup_auto_started_server() -> None:
         _AUTO_STARTED_SERVER = None
 
 
-def ensure_server_ready(server: str = "127.0.0.1:8000", timeout: float = 90.0) -> bool:
+def ensure_server_ready(server: str = DEFAULT_SERVER_ADDRESS, timeout: float = 90.0) -> bool:
     """Ensure ComfyUI server is online, launching it headlessly if needed."""
     global _AUTO_STARTED_SERVER
     if is_server_online(server, timeout=1.5):
@@ -69,7 +69,7 @@ def ensure_server_ready(server: str = "127.0.0.1:8000", timeout: float = 90.0) -
 
 
 def run_commercial_swap(
-    server: str = "127.0.0.1:8000",
+    server: str = DEFAULT_SERVER_ADDRESS,
     campaign_dir: Path = Path("data/input_campaign"),
     models_dir: Path = Path("data/input_models"),
     output_dir: Path = Path("data/output"),
@@ -124,7 +124,7 @@ def run_commercial_swap(
 
 
 def run_quick_dry_run(
-    server: str = "127.0.0.1:8000",
+    server: str = DEFAULT_SERVER_ADDRESS,
     synthetic_dir: Path = Path("data_synthetic"),
     timeout: float = 30.0,
 ) -> int:
@@ -250,7 +250,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         except SystemExit as exc:
             return exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
 
-    default_server = os.environ.get("COMFYUI_SERVER", "127.0.0.1:8000")
+    default_server = os.environ.get("COMFYUI_SERVER", DEFAULT_SERVER_ADDRESS)
     return interactive_menu_loop(default_server)
 
 

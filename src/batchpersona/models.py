@@ -15,6 +15,8 @@ COLOR_YELLOW: Final[str] = "\033[33m"
 COLOR_RED: Final[str] = "\033[31m"
 COLOR_BOLD: Final[str] = "\033[1m"
 
+DEFAULT_SERVER_ADDRESS: Final[str] = "127.0.0.1:8000"
+
 
 class JobStatus(str, Enum):
     """Execution status of an individual model swap job."""
@@ -51,7 +53,7 @@ def normalize_server_address(server_address: str) -> str:
             break
     # Strip any trailing path or slash
     raw = raw.split("/")[0].strip()
-    return raw or "127.0.0.1:8188"
+    return raw or DEFAULT_SERVER_ADDRESS
 
 
 @dataclass(frozen=True)

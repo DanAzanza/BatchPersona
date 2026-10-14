@@ -15,6 +15,7 @@ from batchpersona.models import (
     ComfyExecutionError,
     JobStatus,
     OutputAsset,
+    PipelineError,
     SwapperConfig,
 )
 from batchpersona.orchestrator import BatchSwapper
@@ -133,8 +134,8 @@ def test_batch_swapper_end_to_end_mock(tmp_path: Path) -> None:
     assert len(results) == 2
     assert all(r.status == JobStatus.SUCCESS for r in results)
     assert (output_dir / "campaign_model_01.png").is_file()
-    assert mock_client.free_memory.call_count == 3
-    mock_client.free_memory.assert_called_with(unload_models=True)
+    assert mock_client.free_memory.call_count == 1
+    mock_client.free_memory.assert_called_once_with(unload_models=True)
 
 
 def test_batch_swapper_handles_partial_failure(tmp_path: Path) -> None:
@@ -202,6 +203,8 @@ def test_batch_swapper_handles_partial_failure(tmp_path: Path) -> None:
     assert len(failed_results) == 1
     assert "OOM on model_fail" in (failed_results[0].error_message or "")
     assert len(success_results) == 1
+    assert mock_client.free_memory.call_count == 2
+    mock_client.free_memory.assert_called_with(unload_models=True)
 
 
 def test_batch_swapper_empty_models_dir(tmp_path: Path) -> None:
@@ -664,3 +667,87 @@ def test_batch_swapper_run_batch_preflight_node_validation_aborts(tmp_path: Path
         swapper.run_batch()
 
     assert mock_client.upload_image.call_count == 0
+
+
+def test_process_single_model_preserves_cache_on_success(tmp_path: Path) -> None:
+    """Verify process_single_model does not invoke free_memory when execution succeeds."""
+    campaign = tmp_path / "campaign.png"
+    campaign.write_bytes(b"campaign")
+    model = tmp_path / "model.png"
+    model.write_bytes(b"model")
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    wf = tmp_path / "wf.json"
+    wf.write_text(
+        json.dumps({"1": {"class_type": "LoadImage", "inputs": {}}}),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    config = SwapperConfig(
+        server_address="127.0.0.1:8000",
+        campaign_path=campaign,
+        models_dir=models_dir,
+        output_dir=output_dir,
+        workflow_path=wf,
+    )
+    mock_client = make_mock_client()
+    mock_client.upload_image.return_value = "uploaded_model.png"
+    mock_client.queue_prompt.return_value = "prompt-123"
+    mock_client.track_execution.return_value = [
+        OutputAsset(filename="out.png", subfolder="", image_type="output")
+    ]
+    mock_client.download_image.side_effect = lambda asset, dst: dst.write_bytes(b"done")
+
+    swapper = BatchSwapper(config=config, client=mock_client)
+    res = swapper.process_single_model(model, "campaign_uploaded.png", None)
+
+    assert res.status == JobStatus.SUCCESS
+    assert mock_client.free_memory.call_count == 0
+
+
+def test_process_single_model_frees_memory_on_failure(tmp_path: Path) -> None:
+    """Verify process_single_model invokes free_memory(unload_models=True) on failure/OOM."""
+    campaign = tmp_path / "campaign.png"
+    campaign.write_bytes(b"campaign")
+    model = tmp_path / "model.png"
+    model.write_bytes(b"model")
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    wf = tmp_path / "wf.json"
+    wf.write_text(
+        json.dumps({"1": {"class_type": "LoadImage", "inputs": {}}}),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+    config = SwapperConfig(
+        server_address="127.0.0.1:8000",
+        campaign_path=campaign,
+        models_dir=models_dir,
+        output_dir=output_dir,
+        workflow_path=wf,
+    )
+
+    # 1. Test OOM failure
+    mock_client_oom = make_mock_client()
+    mock_client_oom.upload_image.return_value = "uploaded_model.png"
+    mock_client_oom.track_execution.side_effect = ComfyExecutionError(
+        "CUDA out of memory in KSampler"
+    )
+    swapper_oom = BatchSwapper(config=config, client=mock_client_oom)
+    res_oom = swapper_oom.process_single_model(model, "campaign_uploaded.png", None)
+
+    assert res_oom.status == JobStatus.FAILED
+    mock_client_oom.free_memory.assert_called_once_with(unload_models=True)
+    mock_client_oom.interrupt_execution.assert_called_once()
+
+    # 2. Test general execution failure
+    mock_client_err = make_mock_client()
+    mock_client_err.upload_image.return_value = "uploaded_model.png"
+    mock_client_err.track_execution.side_effect = PipelineError("Generic node failure")
+    swapper_err = BatchSwapper(config=config, client=mock_client_err)
+    res_err = swapper_err.process_single_model(model, "campaign_uploaded.png", None)
+
+    assert res_err.status == JobStatus.FAILED
+    mock_client_err.free_memory.assert_called_once_with(unload_models=True)
+    mock_client_err.interrupt_execution.assert_called_once()

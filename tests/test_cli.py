@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from batchpersona.models import DEFAULT_SERVER_ADDRESS
 from batchpersona.orchestrator import parse_cli_args
 from scripts.batch_swapper import configure_logging
 from scripts.batch_swapper import main as batch_main
@@ -35,7 +36,8 @@ def test_parse_cli_args() -> None:
     assert args.models_dir == Path("data/models")
     assert args.market_tag == "latam"
     assert args.timeout == 120.0
-    assert args.server == "127.0.0.1:8188"
+    assert args.server == DEFAULT_SERVER_ADDRESS
+    assert args.server == "127.0.0.1:8000"
     assert args.filter == "*"
     assert args.workflow == Path("workflows/model_swap_qwen21_maskless_api.json")
 

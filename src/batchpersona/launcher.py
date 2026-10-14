@@ -15,7 +15,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from batchpersona.models import normalize_server_address
+from batchpersona.models import DEFAULT_SERVER_ADDRESS, normalize_server_address
 
 PID_FILE_NAME = ".comfyui_server.pid"
 _ACTIVE_SERVER_PROCESS: subprocess.Popen[Any] | None = None
@@ -285,7 +285,7 @@ def detect_comfyui() -> ComfyInstance | None:
     return None
 
 
-def is_server_online(server: str = "127.0.0.1:8000", timeout: float = 1.5) -> bool:
+def is_server_online(server: str = DEFAULT_SERVER_ADDRESS, timeout: float = 1.5) -> bool:
     """Check if ComfyUI server is responding to /system_stats."""
     clean_server = normalize_server_address(server)
     url = f"http://{clean_server}/system_stats"
@@ -332,7 +332,7 @@ def build_headless_command(instance: ComfyInstance, host: str, port: str) -> lis
 
 def launch_server(
     instance: ComfyInstance,
-    server: str = "127.0.0.1:8000",
+    server: str = DEFAULT_SERVER_ADDRESS,
     timeout: float = 60.0,
 ) -> bool:
     """Launch the ComfyUI server and wait until it is ready."""
@@ -345,7 +345,8 @@ def launch_server(
     if ":" in clean_server:
         host, port = clean_server.split(":", 1)
     else:
-        host, port = clean_server, "8000"
+        host = clean_server
+        port = DEFAULT_SERVER_ADDRESS.split(":", 1)[1] if ":" in DEFAULT_SERVER_ADDRESS else "8000"
 
     if instance.mode == "headless":
         if not instance.python_exe or not instance.main_py:
@@ -526,7 +527,7 @@ def is_comfyui_process(pid: int) -> bool:
             return False
 
 
-def unload_comfyui_vram(server: str = "127.0.0.1:8000", timeout: float = 3.0) -> bool:
+def unload_comfyui_vram(server: str = DEFAULT_SERVER_ADDRESS, timeout: float = 3.0) -> bool:
     """Send /interrupt and /free signals to ComfyUI to immediately release GPU VRAM."""
     clean_server = normalize_server_address(server)
     url_interrupt = f"http://{clean_server}/interrupt"
@@ -552,14 +553,14 @@ def unload_comfyui_vram(server: str = "127.0.0.1:8000", timeout: float = 3.0) ->
 
 
 def stop_server(
-    server: str = "127.0.0.1:8000",
+    server: str = DEFAULT_SERVER_ADDRESS,
     timeout: float = 5.0,
     unload_first: bool = True,
 ) -> bool:
     """Stop ComfyUI server, release GPU VRAM, and close console window.
 
     Args:
-        server: Host:port of ComfyUI server (default: 127.0.0.1:8000).
+        server: Host:port of ComfyUI server (default: DEFAULT_SERVER_ADDRESS).
         timeout: Maximum seconds to wait for server process to terminate.
         unload_first: Whether to dispatch /interrupt and /free to release GPU VRAM first.
 
@@ -592,7 +593,10 @@ def stop_server(
         pid = read_server_pid(clean_server)
     if pid is None and was_online:
         try:
-            port = int(clean_server.split(":")[1]) if ":" in clean_server else 8000
+            default_port = (
+                int(DEFAULT_SERVER_ADDRESS.split(":")[1]) if ":" in DEFAULT_SERVER_ADDRESS else 8000
+            )
+            port = int(clean_server.split(":")[1]) if ":" in clean_server else default_port
             candidate_pid = find_pid_by_port(port)
             if candidate_pid is not None and is_comfyui_process(candidate_pid):
                 pid = candidate_pid
@@ -658,8 +662,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--server",
-        default="127.0.0.1:8000",
-        help="Target ComfyUI server host:port (default: 127.0.0.1:8000)",
+        default=DEFAULT_SERVER_ADDRESS,
+        help=f"Target ComfyUI server host:port (default: {DEFAULT_SERVER_ADDRESS})",
     )
     parser.add_argument(
         "--check",

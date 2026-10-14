@@ -12,10 +12,12 @@ import websocket
 
 from batchpersona.client import ComfyUIClient
 from batchpersona.models import (
+    DEFAULT_SERVER_ADDRESS,
     ComfyAPIError,
     ComfyExecutionError,
     ComfyTimeoutError,
     OutputAsset,
+    normalize_server_address,
 )
 from tests.conftest import MockWebSocket
 
@@ -483,3 +485,23 @@ def test_client_track_execution_with_external_ws() -> None:
     )
     assert assets == []
     assert not mock_ws.closed
+
+
+def test_normalize_server_address_default_fallback() -> None:
+    """Verify normalize_server_address falls back to DEFAULT_SERVER_ADDRESS when empty."""
+    assert normalize_server_address("") == DEFAULT_SERVER_ADDRESS
+    assert normalize_server_address("   ") == DEFAULT_SERVER_ADDRESS
+    assert normalize_server_address("http://127.0.0.1:8000/") == "127.0.0.1:8000"
+    assert normalize_server_address("https://127.0.0.1:8188/prompt") == "127.0.0.1:8188"
+    assert normalize_server_address("ws://localhost:8000") == "localhost:8000"
+    assert normalize_server_address("wss://remote-host:9000/") == "remote-host:9000"
+    assert DEFAULT_SERVER_ADDRESS == "127.0.0.1:8000"
+
+
+def test_package_exports_default_server_address() -> None:
+    """Verify batchpersona root package exports DEFAULT_SERVER_ADDRESS in __all__."""
+    import batchpersona
+
+    assert hasattr(batchpersona, "DEFAULT_SERVER_ADDRESS")
+    assert "DEFAULT_SERVER_ADDRESS" in batchpersona.__all__
+    assert batchpersona.DEFAULT_SERVER_ADDRESS == "127.0.0.1:8000"

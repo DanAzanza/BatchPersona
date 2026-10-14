@@ -292,7 +292,7 @@ batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models
 
 | Argument | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--server` | `str` | `127.0.0.1:8188` | ComfyUI host address and port (`host:port`). |
+| `--server` | `str` | `127.0.0.1:8000` | ComfyUI host address and port (`host:port`). Default is `127.0.0.1:8000` (Comfy Desktop); portable/git ComfyUI uses `8188`. |
 | `--campaign` | `Path` | *Required* | Path to base campaign lookbook advertisement. |
 | `--models-dir` | `Path` | *Required* | Directory containing target model reference portraits. |
 | `--output-dir` | `Path` | `data/output` | Destination directory for localized campaign assets. |

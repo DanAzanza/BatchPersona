@@ -32,6 +32,7 @@ from batchpersona.models import (
     COLOR_RED,
     COLOR_RESET,
     COLOR_YELLOW,
+    DEFAULT_SERVER_ADDRESS,
     ComfyAPIError,
     JobResult,
     JobStatus,
@@ -267,7 +268,12 @@ class BatchSwapper:
                 model_file.name,
                 e,
             )
+            if is_oom:
+                LOGGER.warning(
+                    "OOM condition detected for %s; releasing all model VRAM.", model_file.name
+                )
             self._client.interrupt_execution()
+            self._client.free_memory(unload_models=True)
             return JobResult(
                 model_name=model_file.name,
                 output_path=None,
@@ -277,7 +283,6 @@ class BatchSwapper:
                 market_tag=self._config.market_tag,
             )
         finally:
-            self._client.free_memory(unload_models=is_oom)
             if model_asset_name:
                 self._housekeeper.cleanup_model_input(model_asset_name, model_file)
 
@@ -441,7 +446,7 @@ def parse_cli_args(args: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Production Headless ComfyUI Batch Model Replacement Pipeline"
     )
-    default_server = os.environ.get("COMFYUI_SERVER", "127.0.0.1:8188")
+    default_server = os.environ.get("COMFYUI_SERVER", DEFAULT_SERVER_ADDRESS)
     parser.add_argument(
         "--server",
         default=default_server,

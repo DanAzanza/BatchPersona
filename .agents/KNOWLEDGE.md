@@ -18,10 +18,9 @@
 
 ## Local ComfyUI Instance Details
 - **Active Instance**: Comfy Desktop running headless API backend at `http://127.0.0.1:8000`.
-- **Port Gotcha**:
-  - `batchpersona.launcher` defaults to port `8000` (tuned for Comfy Desktop).
-  - `batchpersona.orchestrator` CLI defaults to port `8188` (standard standalone ComfyUI).
-  - When targeting local Comfy Desktop via orchestrator CLI, always pass `--server 127.0.0.1:8000` or export `COMFYUI_SERVER=127.0.0.1:8000`.
+- **Default Server Port**:
+  - Unified default across all modules (`models.py`, `launcher.py`, `pipeline.py`, `orchestrator.py`) is `127.0.0.1:8000` (`DEFAULT_SERVER_ADDRESS`, tuned for Comfy Desktop).
+  - Standalone portable or git ComfyUI installations typically run on port `8188`; pass `--server 127.0.0.1:8188` or export `COMFYUI_SERVER=127.0.0.1:8188`.
 - **Hardware Acceleration**: CUDA 0 - NVIDIA GeForce RTX 4060 Ti (16 GB VRAM).
 - **Model Storage**: `C:\Users\danie\ComfyUI-Shared\models`
   - Diffusion: `diffusion_models/qwen_image_2.1_int8_convrot.safetensors`
@@ -53,7 +52,7 @@
   - Output files are generated strictly as `<campaign_stem>_<model_stem>.png`.
   - `--market-tag` is tracked solely as job metadata in `JobResult` and does not mutate export file paths. Never use static market tags (`campaign_global_*`) in batch runners, as subsequent lookbooks will silently overwrite earlier runs.
 - **Attention Masking**: When applying `IPAdapterApply` for face/model identity swap on lookbook images, wire the inpainting mask into `attn_mask` to prevent identity bleeding into background and garments.
-- **Memory Management**: Send `POST /free` (`{"unload_models": False, "free_memory": True}`) between batch iterations to clear PyTorch CUDA caches without checkpoint reload latency.
+- **Memory Management**: Do NOT flush cache (`free_memory: True`) between successful batch iterations to preserve upstream node evaluation caching. Only call `free_memory(unload_models=True)` on failure/OOM, and in the `finally:` block when the entire batch concludes.
 - **Smart Housekeeping & Windows NTFS File-Locking**:
   - Purging intermediate ComfyUI input/output assets requires bounded micro-retries (3 attempts, 50 ms exponential backoff) due to transient Windows NTFS handle locking (`WinError 32` / `PermissionError`) by ComfyUI or the Windows Search indexer.
   - Deletion guards must verify canonical paths (`target.resolve() != source.resolve()` and `target.resolve() != export.resolve()`) to prevent self-deletion when campaign or output directories coincide with ComfyUI directories.
