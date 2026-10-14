@@ -1,6 +1,6 @@
 # BatchPersona 🎭
 
-**Production-grade, headless batch-processing pipeline for automated model and persona replacement in commercial advertising campaigns using ComfyUI's REST & WebSocket API and Qwen Image 2.1 DiT multimodal inpainting.**
+**Resilient, headless Python orchestration pipeline and API/WebSocket client for ComfyUI batch production. Automates model and persona replacement in commercial advertising campaigns.**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![CI Quality Gate](https://github.com/DanAzanza/BatchPersona/actions/workflows/ci.yml/badge.svg)](https://github.com/DanAzanza/BatchPersona/actions/workflows/ci.yml)
@@ -8,7 +8,7 @@
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%2F%20WebSocket-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Architecture: DiT](https://img.shields.io/badge/Diffusion-Qwen%20Image%202.1%20DiT-purple.svg)](docs/ARCHITECTURE.md)
 [![Coverage: 91% Branch](https://img.shields.io/badge/test%20coverage-91%25%20branch-brightgreen.svg)](tests/)
-[![Tests: 145 Passed](https://img.shields.io/badge/tests-145%20passed-success.svg)](tests/)
+[![Tests: 171 Passed](https://img.shields.io/badge/tests-171%20passed-success.svg)](tests/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -64,10 +64,10 @@ The pipeline generates authentic, photorealistic model replacements while mainta
 
 ---
 
-## 🏗️ Architecture & Core Innovations
+## 🏗️ Technical Architecture & Pipeline Design
 
-> [!TIP]
-> **Staff-Level Architecture Deep Dive**: For complete mathematical derivations of Rectified Flow Matching (RFM), Classifier-Free Guidance (CFG) velocity fields, attention crosstalk prevention, headless WebSocket state machines, and empirical hardware benchmarks, consult [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+> [!NOTE]
+> For workflow parameter dynamics (Euler sampler, CFG 1.0, guidance dynamics), WebSocket state machine details, and memory profiling, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ### 1. Maskless DiT Multimodal Conditioning vs. Traditional Inpainting
 
@@ -176,12 +176,18 @@ BatchPersona/
 │   ├── prepare_fullbody_dataset.py # Forwarding shim -> batchpersona.preprocess
 │   ├── run_ci_locally.py        # Forwarding shim -> batchpersona.ci
 │   └── run_pipeline.py          # Forwarding shim -> batchpersona.pipeline
-├── tests/                       # 🧪 Automated test suites (145 tests)
-│   ├── test_batch_swapper.py    # Batch swapper, skip-existing & node validation tests
+├── tests/                       # 🧪 Automated test suites (171 tests, 91% branch coverage)
+│   ├── conftest.py              # Shared test fixtures and ComfyUI client mocks
 │   ├── test_ci_parity.py        # CI parity, AST compatibility & packaging checks
+│   ├── test_cli.py              # CLI argument parsing, flags & exit code tests
+│   ├── test_client.py           # HTTP multipart, WebSocket framing & metadata tests
+│   ├── test_generator.py        # Synthetic image synthesis test fixtures
 │   ├── test_housekeeper.py      # Storage housekeeping & safety guard tests
 │   ├── test_launch_comfyui.py   # Server launcher, PID tracking & shutdown tests
-│   └── test_run_pipeline.py     # Pipeline runner orchestration & menu tests
+│   ├── test_metadata.py         # EU AI Act Article 50 & workflow stripping tests
+│   ├── test_orchestrator.py     # Batch swapper, skip-existing & execution tests
+│   ├── test_run_pipeline.py     # Interactive runner orchestration & menu tests
+│   └── test_template.py         # Workflow template validation & node patching tests
 ├── install.bat                  # ⚡ Windows 1-Click Environment Setup & Self-Test
 ├── install.sh                   # ⚡ Linux/macOS 1-Click Environment Setup & Self-Test
 ├── run_pipeline.bat             # 🚀 Windows Interactive Management & Batch Runner
@@ -297,7 +303,7 @@ batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models
 | `--models-dir` | `Path` | *Required* | Directory containing target model reference portraits. |
 | `--output-dir` | `Path` | `data/output` | Destination directory for localized campaign assets. |
 | `--workflow` | `Path` | `workflows/model_swap_qwen21_maskless_api.json` | ComfyUI API prompt JSON template. |
-| `--market-tag` | `str` | `global` | Campaign market identifier metadata (`apac`, `latam`, `emea`). Note: output filenames strictly follow `<campaign>_<model>.png`. |
+| `--market-tag` | `str` | `global` | Campaign market identifier metadata (`apac`, `latam`, `emea`). When specified, output filenames follow `<campaign>_<tag>_<model>.png`. |
 | `--mask` | `Path` | `None` | Path to optional manual segmentation mask. |
 | `--filter` | `str` | `*` | Glob pattern to filter models inside `--models-dir` (e.g. `*east_asia*`). |
 | `--timeout` | `float` | `300.0` | Execution timeout in seconds per individual asset. |
@@ -306,6 +312,7 @@ batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models
 | `--seed` | `int` | `None` | Override diffusion sampler seed (0 to 2^64 - 1). |
 | `--resolution` | `int` | `None` | Override model resolution (e.g. 1024, 1280). |
 | `--prompt` | `str` | `None` | Override positive instruction prompt (preserves `<image1>` and `<image2>` tokens). |
+| `--keep-workflow-metadata` | `flag` | `False` | Retain internal ComfyUI prompt and workflow graph chunks in exported PNG deliverables. |
 | `--no-cleanup` | `flag` | `False` | Disable automatic purging of intermediate ComfyUI assets. |
 | `--comfy-input-dir` | `Path` | `None` | Override ComfyUI input directory path for housekeeping. |
 | `--comfy-output-dir` | `Path` | `None` | Override ComfyUI output directory path for housekeeping. |
@@ -314,7 +321,7 @@ batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models
 
 ## 🧪 Verification & Test Suite
 
-The automated test suite provides **91% branch coverage (145 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
+The automated test suite provides **91% branch coverage (171 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
 
 Run the complete test suite with coverage report:
 
@@ -355,9 +362,21 @@ python -m pyright src scripts tests
 
 ## ⚖️ Legal, Ethical & AI Transparency Notice
 
-### EU AI Act Compliance (Article 50)
-* **Synthetic Media Transparency**: In accordance with Article 50 of the European Union Artificial Intelligence Act (effective August 2026), deployers of AI systems that generate or manipulate image content depicting real persons (deepfakes / persona replacements) must **disclose that the content has been artificially generated or manipulated**.
-* **Provenance & Metadata**: Commercial deliverables generated by BatchPersona should incorporate machine-readable provenance metadata (such as C2PA Content Credentials or embedded XMP metadata tags) indicating generative persona synthesis.
+### EU AI Act Compliance (Article 50) & Commercial Deliverable Sanitization
+
+BatchPersona implements automated post-download PNG metadata processing (`src/batchpersona/metadata.py`) to satisfy EU AI Act transparency requirements while safeguarding proprietary pipeline graphs:
+
+1. **Machine-Readable Provenance Metadata**:
+   In accordance with Article 50 of the European Union Artificial Intelligence Act (effective August 2026) regarding synthetic media transparency, every exported PNG embeds standard machine-readable text chunks:
+   - `Software`: `"BatchPersona"`
+   - `AI-Generated`: `"true"`
+   - `AI-System`: `"BatchPersona / ComfyUI"`
+   - `AI-Compliance`: `"EU-AI-Act-Article-50-Synthetic-Media"`
+   - `Market-Tag`: `<market_tag>` (e.g. `"apac"`, `"latam"`, `"emea"`, or `"global"`)
+
+2. **Proprietary Workflow & Prompt Stripping**:
+   By default, ComfyUI embeds complete internal execution graphs and node parameters into saved PNGs (`prompt` and `workflow` text chunks). BatchPersona automatically strips these proprietary chunks from downloaded deliverables so that client deliverables do not leak internal node structures, custom model names, or prompt engineering IP.
+   - Use `--keep-workflow-metadata` if you explicitly wish to retain internal ComfyUI workflow chunks for debugging or archiving.
 
 ### Model Rights & Informed Consent
 * Replacing human likenesses in advertising campaigns requires explicit, documented contractual consent from all participating human models whose physical appearance or photographic likeness is utilized as conditioning input.

@@ -1,12 +1,12 @@
-# BatchPersona: Systems Architecture & Theoretical Foundations
+# BatchPersona: Systems Architecture & Technical Reference
 
-This document provides a comprehensive technical breakdown of the **BatchPersona** pipeline architecture, its mathematical underpinnings in Rectified Flow Matching (RFM) Diffusion Transformers (DiT), ComfyUI's headless execution protocols, memory resilience strategies, and empirical hardware benchmarks.
+This document provides a technical overview of the **BatchPersona** pipeline architecture: headless ComfyUI REST/WebSocket execution protocols, parameter dynamics in Qwen Image 2.1 DiT workflows, memory resilience strategies, and empirical hardware benchmarks.
 
 ---
 
 ## 1. System Overview & Component Topology
 
-BatchPersona is designed as an industrial-grade, headless batch-processing engine that automates identity and persona localization for commercial advertising campaigns while strictly preserving base garments, tailoring, lighting, and pose.
+BatchPersona is designed as a resilient, headless Python batch-processing engine and client that automates identity and persona localization for commercial advertising campaigns while strictly preserving base garments, tailoring, lighting, and pose.
 
 ### 1.1 Architectural Objectives
 
@@ -61,40 +61,36 @@ flowchart TD
 
 ---
 
-## 2. Theoretical Foundations: Rectified Flow Matching (RFM) & DiT
+## 2. Model Dynamics: Rectified Flow Matching (RFM) & Sampler Mapping
 
-Traditional image-to-image and inpainting pipelines rely on latent diffusion models (e.g., Stable Diffusion 1.5, SDXL) based on U-Net backbones and Denoising Diffusion Probabilistic Models (DDPM) or Score-Based SDE formulations. BatchPersona leverages **Qwen Image 2.1**, an advanced multimodal Diffusion Transformer (DiT) operating under the **Rectified Flow Matching (RFM)** framework.
+Traditional image-to-image pipelines rely on latent diffusion models (e.g., SDXL) with curved denoising trajectories driven by Brownian noise. BatchPersona leverages **Qwen Image 2.1**, a multimodal Diffusion Transformer (DiT) operating under the **Rectified Flow Matching (RFM)** formulation.
 
-### 2.1 Rectified Flow Matching Mathematical Formulation
+### 2.1 Rectified Flow Matching Formulation
 
-Unlike standard diffusion models that trace curved probability trajectories driven by stochastic Brownian motion, Rectified Flow Matching constructs an Ordinary Differential Equation (ODE) that transports probability mass between the prior distribution $X_0 \sim \mathcal{N}(0, I)$ and the data distribution $X_1 \sim p_1(x)$ along straight deterministic trajectories.
+Rectified Flow Matching defines an Ordinary Differential Equation (ODE) that transports probability mass between a Gaussian prior $X_0 \sim \mathcal{N}(0, I)$ and the target data distribution $X_1 \sim p_1(x)$ along straight deterministic trajectories:
 
-The probability flow is governed by:
+$$\frac{d X_t}{dt} = v_\theta(X_t, t), \quad X_t = (1 - t) X_0 + t X_1$$
 
-$$\frac{d X_t}{dt} = v_\theta(X_t, t)$$
-
-Where:
-* $t \in [0, 1]$ denotes continuous diffusion time.
-* $X_t$ defines the intermediate latent trajectory linearly interpolated between $X_0$ and $X_1$:
-
-$$X_t = (1 - t) X_0 + t X_1$$
-
-The theoretical instantaneous target velocity vector field along this trajectory is constant:
+The target velocity vector field along this trajectory is constant:
 
 $$u(X_t, t) = \frac{d X_t}{dt} = X_1 - X_0$$
 
-A neural vector field $v_\theta(X_t, t)$ parameterized by the Diffusion Transformer is optimized using the continuous regression loss:
+The network $v_\theta(X_t, t)$ is trained via continuous regression:
 
 $$\mathcal{L}_{\text{RFM}}(\theta) = \mathbb{E}_{t \sim \mathcal{U}(0,1), X_0 \sim p_0, X_1 \sim p_1} \left[ \| v_\theta(X_t, t) - (X_1 - X_0) \|^2 \right]$$
 
-### 2.2 Why Straight Trajectories Eliminate Inpainting Seams
+### 2.2 Mapping RFM to ComfyUI Sampler Inputs
 
-1. **Curvature Reduction**: Standard diffusion trajectories possess high curvature, requiring sophisticated numerical solvers (e.g., DPMSolver++, Heun) and many steps ($35\text{--}50$) to avoid discretization drift. Flow matching trajectories are straight lines in probability space, drastically minimizing truncation errors under simple low-order Euler discretization ($20\text{--}25$ steps).
-2. **Global Multimodal Attention**: In a U-Net architecture, spatial resolution is compressed through convolutional downsampling layers, causing local cross-attention pooling. In a DiT architecture, image tokens from `<image1>` (the campaign base) and `<image2>` (the target persona) are flattened into continuous token sequences with full bi-directional self-attention:
+Understanding this linear probability path directly informs how workflow sampler parameters are configured in `workflows/model_swap_qwen21_maskless_api.json`:
+
+1. **Sampler Selection (`sampler_name: "euler"`)**: Because flow matching paths are straight in probability space, truncation errors are minimal even under simple first-order Euler discretization. Higher-order solvers (e.g., DPMSolver++, Heun) designed to correct high curvature in DDPM models add compute latency without visual gain.
+2. **Step Budget (`steps: 25`)**: The linear velocity field converges reliably in 20–25 steps, reducing latency compared to 35–50 steps standard in curved diffusion sampling.
+3. **Scheduler (`scheduler: "simple"` / linear)**: A uniform time-step schedule aligns with constant-speed transport between $t=0$ and $t=1$.
+4. **Global Multimodal Attention**: Tokens from `<image1>` (campaign) and `<image2>` (model) are embedded in a unified DiT sequence:
 
 $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right) V$$
 
-This allows the network to condition the latent generation globally across all patches simultaneously, resolving clothing edges, collar folds, and hair strands without boundary seams.
+Full bi-directional self-attention conditions generation across all spatial patches simultaneously, eliminating the boundary seam artifacts inherent to binary inpainting masks.
 
 ---
 
@@ -282,6 +278,19 @@ Because ComfyUI's standard `LoadImage` and `SaveImage` nodes enforce sandbox acc
 4. **Lifecycle-Scoped Purging**: Model portraits are purged immediately upon single-job completion; shared base campaign lookbooks and inpainting masks are safely unlinked in a `finally` block only when the entire batch terminates.
 5. **Windows File Lock Resilience**: Deletions execute within a bounded micro-retry loop (3 attempts with exponential backoff) to gracefully absorb transient NTFS handle locks from ComfyUI or background indexers.
 
+### 6.4 EU AI Act Provenance Metadata & Workflow Stripping
+
+Commercial deliverables require transparency under synthetic media regulations while safeguarding internal pipeline intellectual property. Immediately following binary download, `ComfyUIClient.download_image` invokes `process_png_provenance_metadata` on the temporary staging asset:
+
+1. **Proprietary Graph Stripping**: ComfyUI's `SaveImage` node embeds full internal execution graphs, custom node mappings, and input parameters into PNG `prompt` and `workflow` text chunks. BatchPersona strips these chunks by default (unless `--keep-workflow-metadata` is set) to prevent leaking workflow IP in commercial client deliverables.
+2. **Article 50 Machine-Readable Provenance**: Injects standard transparency tags into PNG headers:
+   - `Software`: `"BatchPersona"`
+   - `AI-Generated`: `"true"`
+   - `AI-System`: `"BatchPersona / ComfyUI"`
+   - `AI-Compliance`: `"EU-AI-Act-Article-50-Synthetic-Media"`
+   - `Market-Tag`: `<market_tag>`
+3. **Atomic Rewriting**: Copies the image in-memory, writes to a sibling temporary file (`.meta.tmp`), and atomically replaces the staging file to prevent Windows file locking collisions.
+
 ---
 
 ## 7. Empirical Benchmarks & Operational Performance
@@ -305,7 +314,7 @@ The following benchmarks represent empirical workstation reference measurements 
 
 | Quality Dimension | Metric | Tooling & Enforcement |
 | :--- | :--- | :--- |
-| **Automated Test Suite** | **145 passing tests** | `pytest` 9.1+ |
+| **Automated Test Suite** | **171 passing tests** | `pytest` 9.1+ |
 | **Branch Coverage** | **91.1%** (mandatory $\ge 90\%$) | `pytest-cov` with branch analysis |
 | **Static Type Verification** | **0 errors, 0 warnings** | Microsoft Pyright 1.1+ (`src`, `scripts`, `tests`) |
 | **Linting & Code Style** | **0 diagnostics** | Astral Ruff (PEP 8, Flake8, Bugbear) |
