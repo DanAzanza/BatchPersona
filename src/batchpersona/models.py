@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -100,12 +101,26 @@ class SwapperConfig:
             raise ValueError(f"Resolution must be a positive integer, got {self.resolution}")
         object.__setattr__(self, "server_address", normalize_server_address(self.server_address))
 
+    @property
+    def clean_market_tag(self) -> str:
+        """Return sanitized lowercase market tag, or empty string if 'global' or empty."""
+        if not self.market_tag:
+            return ""
+        clean = re.sub(r"[^a-z0-9_-]+", "_", self.market_tag.strip().lower()).strip("_")
+        return "" if clean == "global" else clean
+
     def get_target_path(self, model_file: Path) -> Path:
         """Derive the deterministic output path for a campaign-model pair."""
+        tag = self.clean_market_tag
+        if tag:
+            return self.output_dir / f"{self.campaign_path.stem}_{tag}_{model_file.stem}.png"
         return self.output_dir / f"{self.campaign_path.stem}_{model_file.stem}.png"
 
     def get_output_prefix(self, model_file: Path) -> str:
         """Derive the ComfyUI output filename prefix for a campaign-model pair."""
+        tag = self.clean_market_tag
+        if tag:
+            return f"batchpersona_{self.campaign_path.stem}_{tag}_{model_file.stem}"
         return f"batchpersona_{self.campaign_path.stem}_{model_file.stem}"
 
 

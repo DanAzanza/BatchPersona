@@ -13,6 +13,7 @@ from batchpersona.client import ComfyUIClient
 from batchpersona.models import (
     ComfyAPIError,
     ComfyExecutionError,
+    JobResult,
     JobStatus,
     OutputAsset,
     PipelineError,
@@ -133,7 +134,8 @@ def test_batch_swapper_end_to_end_mock(tmp_path: Path) -> None:
 
     assert len(results) == 2
     assert all(r.status == JobStatus.SUCCESS for r in results)
-    assert (output_dir / "campaign_model_01.png").is_file()
+    assert (output_dir / "campaign_emea_model_01.png").is_file()
+    assert (output_dir / "campaign_emea_model_02.png").is_file()
     assert mock_client.free_memory.call_count == 1
     mock_client.free_memory.assert_called_once_with(unload_models=True)
 
@@ -751,3 +753,126 @@ def test_process_single_model_frees_memory_on_failure(tmp_path: Path) -> None:
     assert res_err.status == JobStatus.FAILED
     mock_client_err.free_memory.assert_called_once_with(unload_models=True)
     mock_client_err.interrupt_execution.assert_called_once()
+
+
+def test_swapper_config_market_tag_target_path_and_prefix(tmp_path: Path) -> None:
+    """Verify SwapperConfig derives target path and output prefix according to market_tag."""
+    campaign = tmp_path / "lookbook.png"
+    campaign.touch()
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    wf = tmp_path / "wf.json"
+    wf.write_text(json.dumps({"1": {"class_type": "LoadImage", "inputs": {}}}), encoding="utf-8")
+    output_dir = tmp_path / "output"
+    model_file = Path("model_east_asia.png")
+
+    # 1. Default "global" -> backward-compatible un-tagged filename
+    cfg_default = SwapperConfig(
+        server_address="127.0.0.1:8000",
+        campaign_path=campaign,
+        models_dir=models_dir,
+        output_dir=output_dir,
+        workflow_path=wf,
+    )
+    assert cfg_default.clean_market_tag == ""
+    assert cfg_default.get_target_path(model_file) == output_dir / "lookbook_model_east_asia.png"
+    assert cfg_default.get_output_prefix(model_file) == "batchpersona_lookbook_model_east_asia"
+
+    # 2. Case-insensitive "GLOBAL" or whitespace/empty -> un-tagged
+    for tag in ("GLOBAL", "Global", "", "   "):
+        cfg = SwapperConfig(
+            server_address="127.0.0.1:8000",
+            campaign_path=campaign,
+            models_dir=models_dir,
+            output_dir=output_dir,
+            workflow_path=wf,
+            market_tag=tag,
+        )
+        assert cfg.clean_market_tag == ""
+        assert cfg.get_target_path(model_file) == output_dir / "lookbook_model_east_asia.png"
+        assert cfg.get_output_prefix(model_file) == "batchpersona_lookbook_model_east_asia"
+
+    # 3. Non-global market tags -> sanitized lowercase included in path and prefix
+    cases = [
+        (
+            "apac",
+            "apac",
+            "lookbook_apac_model_east_asia.png",
+            "batchpersona_lookbook_apac_model_east_asia",
+        ),
+        (
+            "LATAM",
+            "latam",
+            "lookbook_latam_model_east_asia.png",
+            "batchpersona_lookbook_latam_model_east_asia",
+        ),
+        (
+            "US / East Coast",
+            "us_east_coast",
+            "lookbook_us_east_coast_model_east_asia.png",
+            "batchpersona_lookbook_us_east_coast_model_east_asia",
+        ),
+        (
+            "eu-north-1",
+            "eu-north-1",
+            "lookbook_eu-north-1_model_east_asia.png",
+            "batchpersona_lookbook_eu-north-1_model_east_asia",
+        ),
+    ]
+    for tag, expected_clean, expected_filename, expected_prefix in cases:
+        cfg = SwapperConfig(
+            server_address="127.0.0.1:8000",
+            campaign_path=campaign,
+            models_dir=models_dir,
+            output_dir=output_dir,
+            workflow_path=wf,
+            market_tag=tag,
+        )
+        assert cfg.clean_market_tag == expected_clean
+        assert cfg.get_target_path(model_file) == output_dir / expected_filename
+        assert cfg.get_output_prefix(model_file) == expected_prefix
+
+
+def test_print_batch_summary_displays_market_tag(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """Verify _print_batch_summary renders market localization in header and column."""
+    campaign = tmp_path / "camp.png"
+    campaign.touch()
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    wf = tmp_path / "wf.json"
+    wf.write_text(json.dumps({"1": {"class_type": "LoadImage", "inputs": {}}}), encoding="utf-8")
+    cfg = SwapperConfig(
+        server_address="127.0.0.1:8000",
+        campaign_path=campaign,
+        models_dir=models_dir,
+        output_dir=tmp_path / "out",
+        workflow_path=wf,
+        market_tag="apac",
+    )
+    swapper = BatchSwapper(config=cfg, client=MagicMock(spec=ComfyUIClient))
+    results = [
+        JobResult(
+            model_name="model_01.png",
+            output_path=tmp_path / "out" / "camp_apac_model_01.png",
+            status=JobStatus.SUCCESS,
+            duration_seconds=3.5,
+            market_tag="apac",
+        ),
+        JobResult(
+            model_name="model_02.png",
+            output_path=None,
+            status=JobStatus.FAILED,
+            duration_seconds=1.2,
+            error_message="Network glitch",
+            market_tag="apac",
+        ),
+    ]
+    swapper._print_batch_summary(results)
+    captured = capsys.readouterr().out
+    assert "[MARKET: APAC]" in captured
+    assert "MARKET" in captured
+    assert "apac" in captured
+    assert "camp_apac_model_01.png" in captured
+    assert "Network glitch" in captured

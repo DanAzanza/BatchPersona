@@ -409,11 +409,16 @@ class BatchSwapper:
 
     def _print_batch_summary(self, results: list[JobResult]) -> None:
         """Print formatted execution summary table."""
-        print(f"\n{COLOR_BOLD}{'=' * 75}{COLOR_RESET}")
-        print(f"{COLOR_BOLD}COMFYUI BATCH MODEL SWAP - EXECUTION SUMMARY{COLOR_RESET}")
-        print(f"{COLOR_BOLD}{'=' * 75}{COLOR_RESET}")
-        print(f"{'MODEL':<28} | {'STATUS':<9} | {'TIME':<8} | {'EXPORT PATH / ERROR'}")
-        print(f"{'-' * 28}-+-{'-' * 9}-+-{'-' * 8}-+-{'-' * 24}")
+        market_header = (self._config.clean_market_tag or "global").upper()
+        print(f"\n{COLOR_BOLD}{'=' * 85}{COLOR_RESET}")
+        print(
+            f"{COLOR_BOLD}COMFYUI BATCH MODEL SWAP - EXECUTION SUMMARY [MARKET: {market_header}]{COLOR_RESET}"
+        )
+        print(f"{COLOR_BOLD}{'=' * 85}{COLOR_RESET}")
+        print(
+            f"{'MODEL':<24} | {'MARKET':<8} | {'STATUS':<9} | {'TIME':<8} | {'EXPORT PATH / ERROR'}"
+        )
+        print(f"{'-' * 24}-+-{'-' * 8}-+-{'-' * 9}-+-{'-' * 8}-+-{'-' * 27}")
 
         for r in results:
             if r.status == JobStatus.SUCCESS:
@@ -425,7 +430,11 @@ class BatchSwapper:
 
             status_str = f"{status_color}{r.status.value:<9}{COLOR_RESET}"
             detail = r.output_path.name if r.output_path else (r.error_message or "Unknown error")
-            print(f"{r.model_name:<28} | {status_str} | {r.duration_seconds:6.2f}s | {detail}")
+            raw_tag = (r.market_tag or "global").strip()
+            row_tag = raw_tag.lower() if raw_tag else "global"
+            print(
+                f"{r.model_name:<24} | {row_tag:<8} | {status_str} | {r.duration_seconds:6.2f}s | {detail}"
+            )
 
         passed = sum(1 for r in results if r.status == JobStatus.SUCCESS)
         skipped = sum(1 for r in results if r.status == JobStatus.SKIPPED)
@@ -433,7 +442,7 @@ class BatchSwapper:
         total = len(results)
 
         summary_color = COLOR_GREEN if failed == 0 else COLOR_RED
-        print(f"{'-' * 75}")
+        print(f"{'-' * 85}")
         print(
             f"Total: {total} | {COLOR_GREEN}Passed: {passed}{COLOR_RESET} | "
             f"{COLOR_YELLOW}Skipped: {skipped}{COLOR_RESET} | "

@@ -49,8 +49,9 @@
   - Raising `CFG > 1.0` with detailed negative prompts triggers cross-attention crosstalk ("pink elephant" effect) where tokens from `<image2>` (e.g. casual tank tops, t-shirts) inadvertently contaminate the scene, stripping away campaign garments.
   - Strict attribute isolation ("Only transfer the face, facial features, hair, skin tone, and identity of the model in <image2>") and explicit preservation ("Keep all clothing, garments, tailoring, shoes, accessories, pose, and studio background from <image1> completely unchanged. Do not transfer any clothing or footwear from <image2>") prevents footwear and outfit leakage from target models while ensuring seamless identity transfer.
 - **Deterministic Output Naming**:
-  - Output files are generated strictly as `<campaign_stem>_<model_stem>.png`.
-  - `--market-tag` is tracked solely as job metadata in `JobResult` and does not mutate export file paths. Never use static market tags (`campaign_global_*`) in batch runners, as subsequent lookbooks will silently overwrite earlier runs.
+  - Output files are generated strictly as `<campaign_stem>_<clean_tag>_<model_stem>.png` when `--market-tag` is provided and non-global (case-insensitive).
+  - When `--market-tag` is `"global"` or empty, output files preserve backward compatibility as `<campaign_stem>_<model_stem>.png`.
+  - The market tag is sanitized to lowercase alphanumeric characters with hyphens and underscores (`clean_market_tag`).
 - **Attention Masking**: When applying `IPAdapterApply` for face/model identity swap on lookbook images, wire the inpainting mask into `attn_mask` to prevent identity bleeding into background and garments.
 - **Memory Management**: Do NOT flush cache (`free_memory: True`) between successful batch iterations to preserve upstream node evaluation caching. Only call `free_memory(unload_models=True)` on failure/OOM, and in the `finally:` block when the entire batch concludes.
 - **Smart Housekeeping & Windows NTFS File-Locking**:

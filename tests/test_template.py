@@ -251,3 +251,106 @@ def test_workflow_template_get_required_node_types() -> None:
     template = WorkflowTemplate(wf_data)
     nodes = template.get_required_node_types()
     assert nodes == {"LoadImage", "KSampler", "TextEncodeQwenImage21"}
+
+
+def test_workflow_template_precomputes_metadata() -> None:
+    """Verify requires_mask and has_campaign_placeholder are precomputed upon init."""
+    graph_with_both = {
+        "1": {"class_type": "LoadImage", "inputs": {"image": "{{CAMPAIGN_IMG}}"}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": "{{MASK_IMG}}"}},
+    }
+    tmpl1 = WorkflowTemplate(graph_with_both)
+    assert tmpl1.requires_mask() is True
+    assert tmpl1.has_campaign_placeholder is True
+    assert tmpl1._requires_mask is True
+    assert tmpl1._has_campaign_placeholder is True
+
+    graph_without = {
+        "1": {"class_type": "LoadImage", "inputs": {"image": "static.png"}},
+    }
+    tmpl2 = WorkflowTemplate(graph_without)
+    assert tmpl2.requires_mask() is False
+    assert tmpl2.has_campaign_placeholder is False
+    assert tmpl2._requires_mask is False
+    assert tmpl2._has_campaign_placeholder is False
+
+
+def test_workflow_template_clip_text_encode_positive_negative_resolution() -> None:
+    """Verify multi-node CLIPTextEncode resolution: positive linked node is overridden,
+    while negative linked node, auxiliary unlinked negative node, and auxiliary style node are preserved.
+    """
+    graph = {
+        "1": {"class_type": "LoadImage", "inputs": {"image": "{{CAMPAIGN_IMG}}"}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": "{{MODEL_IMG}}"}},
+        "9": {"class_type": "CLIPTextEncode", "inputs": {"text": "default positive prompt"}},
+        "10": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "distorted facial anatomy, blurry eyes"},
+        },
+        "11": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "artifacts, bad anatomy, negative"},
+        },
+        "12": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "cinematic lighting, elegant studio backdrop"},
+        },
+        "20": {
+            "class_type": "KSampler",
+            "inputs": {
+                "positive": ["9", 0],
+                "negative": ["10", 0],
+            },
+        },
+        "30": {"class_type": "SaveImage", "inputs": {"filename_prefix": "{{OUTPUT_PREFIX}}"}},
+    }
+    template = WorkflowTemplate(graph)
+    patched = template.patch(
+        campaign_image_name="camp.png",
+        model_image_name="model.png",
+        output_prefix="out",
+        prompt="A vibrant commercial portrait in Tokyo street fashion",
+    )
+
+    # Node 9 is the explicit positive input -> overridden
+    assert patched["9"]["inputs"]["text"] == "A vibrant commercial portrait in Tokyo street fashion"
+    # Node 10 is the explicit negative input -> preserved
+    assert patched["10"]["inputs"]["text"] == "distorted facial anatomy, blurry eyes"
+    # Node 11 is an auxiliary negative node not linked to KSampler -> preserved
+    assert patched["11"]["inputs"]["text"] == "artifacts, bad anatomy, negative"
+    # Node 12 is an auxiliary style node not linked to positive input -> preserved
+    assert patched["12"]["inputs"]["text"] == "cinematic lighting, elegant studio backdrop"
+
+
+def test_workflow_template_clip_text_encode_explicit_positive_with_negative_words() -> None:
+    """Verify node in positive_node_ids is overridden even if its default text contains negative words."""
+    graph = {
+        "1": {"class_type": "LoadImage", "inputs": {"image": "{{CAMPAIGN_IMG}}"}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": "{{MODEL_IMG}}"}},
+        "9": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "portrait with no distorted elements or blurry spots"},
+        },
+        "10": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "blurry, low quality"},
+        },
+        "20": {
+            "class_type": "KSamplerAdvanced",
+            "inputs": {
+                "positive": ["9", 0],
+                "negative": ["10", 0],
+            },
+        },
+        "30": {"class_type": "SaveImage", "inputs": {"filename_prefix": "{{OUTPUT_PREFIX}}"}},
+    }
+    template = WorkflowTemplate(graph)
+    patched = template.patch(
+        campaign_image_name="camp.png",
+        model_image_name="model.png",
+        output_prefix="out",
+        prompt="Sharper details and vibrant colors",
+    )
+
+    assert patched["9"]["inputs"]["text"] == "Sharper details and vibrant colors"
+    assert patched["10"]["inputs"]["text"] == "blurry, low quality"

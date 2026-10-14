@@ -5,7 +5,15 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
+
+NEGATIVE_PROMPT_INDICATORS: Final[tuple[str, ...]] = (
+    "distorted",
+    "blurry",
+    "artifacts",
+    "bad anatomy",
+    "negative",
+)
 
 
 class WorkflowTemplate:
@@ -14,6 +22,9 @@ class WorkflowTemplate:
     def __init__(self, raw_graph: dict[str, Any]) -> None:
         self._validate_graph(raw_graph)
         self._graph = raw_graph
+        serialized = json.dumps(raw_graph)
+        self._requires_mask: bool = "{{MASK_IMG}}" in serialized
+        self._has_campaign_placeholder: bool = "{{CAMPAIGN_IMG}}" in serialized
 
     @classmethod
     def load_from_file(cls, file_path: Path) -> WorkflowTemplate:
@@ -39,8 +50,12 @@ class WorkflowTemplate:
 
     def requires_mask(self) -> bool:
         """Check whether the workflow template expects an external mask image."""
-        serialized = json.dumps(self._graph)
-        return "{{MASK_IMG}}" in serialized
+        return self._requires_mask
+
+    @property
+    def has_campaign_placeholder(self) -> bool:
+        """Check whether the workflow template contains {{CAMPAIGN_IMG}} placeholder."""
+        return self._has_campaign_placeholder
 
     def get_required_node_types(self) -> set[str]:
         """Extract all unique class_type names used across the workflow graph."""
@@ -85,8 +100,7 @@ class WorkflowTemplate:
         self._substitute_placeholders_recursive(patched, placeholders)
 
         # 3. Fallback for legacy graphs without {{CAMPAIGN_IMG}} placeholder
-        orig_serialized = json.dumps(self._graph)
-        if "{{CAMPAIGN_IMG}}" not in orig_serialized:
+        if not self._has_campaign_placeholder:
             if "1" in patched and patched["1"].get("class_type") == "LoadImage":
                 patched["1"].setdefault("inputs", {})["image"] = campaign_image_name
 
@@ -123,10 +137,14 @@ class WorkflowTemplate:
                 ):
                     node_def.setdefault("inputs", {})["resolution"] = int(resolution)
 
-        # Identify negative conditioning node IDs via KSampler links
+        # Identify positive and negative conditioning node IDs via KSampler links
+        positive_node_ids: set[str] = set()
         negative_node_ids: set[str] = set()
         for node in patched.values():
             if isinstance(node, dict) and "KSampler" in str(node.get("class_type", "")):
+                pos_link = node.get("inputs", {}).get("positive")
+                if isinstance(pos_link, list) and pos_link:
+                    positive_node_ids.add(str(pos_link[0]))
                 neg_link = node.get("inputs", {}).get("negative")
                 if isinstance(neg_link, list) and neg_link:
                     negative_node_ids.add(str(neg_link[0]))
@@ -134,33 +152,29 @@ class WorkflowTemplate:
         if prompt is not None and prompt.strip():
             user_prompt = prompt.strip()
             for node_id, node_def in patched.items():
-                if isinstance(node_def, dict):
-                    class_type = node_def.get("class_type")
-                    if class_type == "TextEncodeQwenImage21":
-                        # Preserve Qwen multimodal structural conditioning tokens if user did not provide them
-                        final_prompt = user_prompt
-                        if "<image1>" not in final_prompt or "<image2>" not in final_prompt:
-                            final_prompt = (
-                                f"In <image1>, replace the person with the target reference model from <image2>. "
-                                f"{user_prompt}"
-                            )
-                        node_def.setdefault("inputs", {})["prompt"] = final_prompt
-                    elif class_type == "CLIPTextEncode":
-                        # Do not override negative conditioning nodes
-                        if node_id in negative_node_ids:
+                if not isinstance(node_def, dict):
+                    continue
+                class_type = node_def.get("class_type")
+                if class_type == "TextEncodeQwenImage21":
+                    # Preserve Qwen multimodal structural conditioning tokens if user did not provide them
+                    final_prompt = user_prompt
+                    if "<image1>" not in final_prompt or "<image2>" not in final_prompt:
+                        final_prompt = (
+                            f"In <image1>, replace the person with the target reference model from <image2>. "
+                            f"{user_prompt}"
+                        )
+                    node_def.setdefault("inputs", {})["prompt"] = final_prompt
+                elif class_type == "CLIPTextEncode":
+                    # Always skip negative conditioning nodes
+                    if node_id in negative_node_ids:
+                        continue
+                    if positive_node_ids and node_id not in positive_node_ids:
+                        continue
+                    if not positive_node_ids:
+                        current_text = str(node_def.get("inputs", {}).get("text", "")).lower()
+                        if any(ind in current_text for ind in NEGATIVE_PROMPT_INDICATORS):
                             continue
-                        if not negative_node_ids:
-                            current_text = str(node_def.get("inputs", {}).get("text", "")).lower()
-                            negative_indicators = [
-                                "distorted",
-                                "blurry",
-                                "artifacts",
-                                "bad anatomy",
-                                "negative",
-                            ]
-                            if any(ind in current_text for ind in negative_indicators):
-                                continue
-                        node_def.setdefault("inputs", {})["text"] = user_prompt
+                    node_def.setdefault("inputs", {})["text"] = user_prompt
 
         return patched
 
