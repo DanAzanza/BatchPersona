@@ -28,8 +28,8 @@ def process_png_provenance_metadata(
 ) -> bool:
     """Inspect and update PNG metadata for EU AI Act compliance and IP protection.
 
-    1. Checks if the file is a valid PNG. If not (e.g. mock byte stream in tests or
-       non-PNG format), skips processing without error.
+    1. Checks if the file is a valid PNG. If not (e.g. non-PNG format or corrupt
+       byte streams), skips processing without error.
     2. Strips proprietary ComfyUI workflow/prompt chunks unless `keep_workflow` is True.
     3. Embeds machine-readable EU AI Act Article 50 provenance metadata tags.
 
@@ -40,15 +40,15 @@ def process_png_provenance_metadata(
 
     try:
         with Image.open(image_path) as im:
-            if im.format != "PNG":
-                LOGGER.debug("Skipping metadata processing on non-PNG format: %s", im.format)
+            if not isinstance(im, PngImagePlugin.PngImageFile):
+                LOGGER.debug(
+                    "Skipping metadata processing on non-PNG format: %s",
+                    getattr(im, "format", "unknown"),
+                )
                 return False
 
             im_copy = im.copy()
-            raw_text = getattr(im, "text", None)
-            existing_text: dict[str, str] = (
-                {str(k): str(v) for k, v in raw_text.items()} if isinstance(raw_text, dict) else {}
-            )
+            existing_text: dict[str, str] = {str(k): str(v) for k, v in im.text.items()}
 
         # Build clean PngInfo
         pnginfo = PngImagePlugin.PngInfo()
@@ -77,6 +77,6 @@ def process_png_provenance_metadata(
                 with contextlib.suppress(OSError):
                     tmp_target.unlink()
 
-    except (UnidentifiedImageError, OSError, ValueError) as err:
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as err:
         LOGGER.debug("Skipping PNG metadata processing on %s: %s", image_path.name, err)
         return False

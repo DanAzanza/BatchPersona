@@ -233,16 +233,7 @@ class ComfyUIClient:
             assets: list[OutputAsset] = []
             for node_out in outputs.values():
                 if isinstance(node_out, dict):
-                    images = node_out.get("images", [])
-                    for img in images:
-                        if isinstance(img, dict):
-                            assets.append(
-                                OutputAsset(
-                                    filename=img.get("filename", ""),
-                                    subfolder=img.get("subfolder", ""),
-                                    image_type=img.get("type", "output"),
-                                )
-                            )
+                    assets.extend(_extract_output_assets(node_out))
             return assets
         except (requests.RequestException, ValueError, OSError) as e:
             LOGGER.debug("Could not query /history/%s: %s", prompt_id, e)
@@ -326,15 +317,8 @@ class ComfyUIClient:
 
                 if event_type == "executed":
                     output_data = event_data.get("output", {})
-                    images = output_data.get("images", [])
-                    for img_info in images:
-                        output_assets.append(
-                            OutputAsset(
-                                filename=img_info.get("filename", ""),
-                                subfolder=img_info.get("subfolder", ""),
-                                image_type=img_info.get("type", "output"),
-                            )
-                        )
+                    if isinstance(output_data, dict):
+                        output_assets.extend(_extract_output_assets(output_data))
 
                 if event_type == "executing" and event_data.get("node") is None:
                     # None signifies workflow execution completed
@@ -359,3 +343,21 @@ class ComfyUIClient:
                 output_assets.extend(history_assets)
 
         return output_assets
+
+
+def _extract_output_assets(output_dict: dict[str, Any]) -> list[OutputAsset]:
+    """Parse list of OutputAsset instances from node output dictionary."""
+    images = output_dict.get("images", [])
+    if not isinstance(images, list):
+        return []
+    assets: list[OutputAsset] = []
+    for img in images:
+        if isinstance(img, dict):
+            assets.append(
+                OutputAsset(
+                    filename=img.get("filename", ""),
+                    subfolder=img.get("subfolder", ""),
+                    image_type=img.get("type", "output"),
+                )
+            )
+    return assets

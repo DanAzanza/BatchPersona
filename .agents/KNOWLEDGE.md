@@ -69,13 +69,17 @@
 - Automated ComfyUI Server Healthcheck & Launcher: `python -m batchpersona.launcher --check` / `--detect` / `--launch` (CLI: `batchpersona-launcher`)
 - Fast test suite with coverage: `python -m pytest tests --cov=batchpersona --cov=scripts --cov-report=term-missing -v`
 - Modular test suites (each strictly $< 600$ lines, zero monolithic test files):
+  - `tests/test_models.py` - Domain data models, SwapperConfig validation, and market localization tags.
   - `tests/test_client.py` - Low-level HTTP multipart, WebSocket event parsing, and connection lifecycle.
   - `tests/test_template.py` - Prompt API graph validation, placeholder replacement, and override patching.
-  - `tests/test_orchestrator.py` - Batch execution loop, pre-flight checks, and `--skip-existing` caching.
-  - `tests/test_cli.py` - Command-line parsing, environment overrides, and CLI entrypoint exit codes.
+  - `tests/test_orchestrator.py` - Batch execution loop, pre-flight checks, and single-model processing.
+  - `tests/test_cache.py` - Incremental `--skip-existing` caching, force overrides, and corrupt output handling.
+  - `tests/test_cli.py` - Command-line parsing, environment overrides, progress bar, and summary reporting.
+  - `tests/test_metadata.py` - PNG chunk inspection and provenance metadata processing.
   - `tests/test_generator.py` - Synthetic PIL image fixtures and dataset preprocessing.
   - `tests/test_housekeeper.py` - Sandboxed input/output asset cleanup and path traversal prevention.
-  - `tests/test_launch_comfyui.py` - Headless server process supervision and safe termination.
+  - `tests/test_launch_comfyui.py` - Headless server instance detection and command synthesis.
+  - `tests/test_server_lifecycle.py` - Server process supervision, PID management, and safe termination.
   - `tests/test_run_pipeline.py` - Interactive console menu and end-to-end execution flow.
   - `tests/test_ci_parity.py` - Multi-stage GitHub Actions CI equivalence and backward-compatibility shims.
 - Full local CI Quality Gate: `python scripts/run_ci_locally.py` (CLI: `batchpersona-ci`)

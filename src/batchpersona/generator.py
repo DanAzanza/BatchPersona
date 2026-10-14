@@ -6,6 +6,7 @@ import argparse
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Final
 
@@ -16,6 +17,13 @@ LOGGER = logging.getLogger("testdata_generator")
 
 DEFAULT_IMAGE_SIZE: Final[int] = 1024
 FEATHER_BLUR_RADIUS: Final[float] = 3.5
+
+
+class FeatureStyle(str, Enum):
+    """Facial feature styling archetype for synthetic model portraits."""
+
+    FEMININE = "feminine"
+    MASCULINE = "masculine"
 
 
 @dataclass(frozen=True)
@@ -254,9 +262,17 @@ def synthesize_model_portrait(
     palette: ColorPalette,
     archetype_title: str,
     size: int = DEFAULT_IMAGE_SIZE,
-    is_masculine_features: bool = False,
+    style: FeatureStyle = FeatureStyle.FEMININE,
+    is_masculine_features: bool | None = None,
 ) -> Image.Image:
     """Synthesize photorealistic archetype portrait with studio lighting and high-contrast features."""
+    if is_masculine_features is not None:
+        masculine = bool(is_masculine_features)
+    elif isinstance(style, bool):
+        masculine = style
+    else:
+        masculine = style == FeatureStyle.MASCULINE
+
     img = _create_studio_gradient(
         size,
         palette.backdrop,
@@ -317,7 +333,7 @@ def synthesize_model_portrait(
 
     # Eyebrows
     brow_y = int(370 * scale)
-    brow_thickness = int(7 * scale if is_masculine_features else 4 * scale)
+    brow_thickness = int(7 * scale if masculine else 4 * scale)
     draw.line(
         [
             (int(center_x - 85 * scale), brow_y),
@@ -427,7 +443,7 @@ def synthesize_model_portrait(
     )
 
     # Facial hair contour if masculine archetype
-    if is_masculine_features:
+    if masculine:
         beard_box = (
             int(center_x - 120 * scale),
             int(480 * scale),
@@ -499,29 +515,34 @@ def generate_all_testdata(output_root: Path, size: int = DEFAULT_IMAGE_SIZE) -> 
     )
 
     # 3. Diverse Model Portraits
-    models_to_create: Sequence[tuple[str, ColorPalette, str, bool]] = [
+    models_to_create: Sequence[tuple[str, ColorPalette, str, FeatureStyle]] = [
         (
             "model_east_asia_f01.png",
             EAST_ASIA_PALETTE,
             "East Asia Female (Archetype 01)",
-            False,
+            FeatureStyle.FEMININE,
         ),
         (
             "model_south_america_m01.png",
             SOUTH_AMERICA_PALETTE,
             "South America Male (Archetype 01)",
-            True,
+            FeatureStyle.MASCULINE,
         ),
-        ("model_nordic_f01.png", NORDIC_PALETTE, "Nordic Female (Archetype 01)", False),
+        (
+            "model_nordic_f01.png",
+            NORDIC_PALETTE,
+            "Nordic Female (Archetype 01)",
+            FeatureStyle.FEMININE,
+        ),
     ]
 
-    for filename, palette, title, is_masculine in models_to_create:
+    for filename, palette, title, feature_style in models_to_create:
         model_path = models_dir / filename
         portrait = synthesize_model_portrait(
             palette=palette,
             archetype_title=title,
             size=size,
-            is_masculine_features=is_masculine,
+            style=feature_style,
         )
         portrait.save(model_path, format="PNG")
         generated_files.append(model_path)

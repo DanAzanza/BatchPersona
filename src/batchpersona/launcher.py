@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -16,6 +17,8 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from batchpersona.models import DEFAULT_SERVER_ADDRESS, normalize_server_address
+
+LOGGER = logging.getLogger("batchpersona.launcher")
 
 PID_FILE_NAME = ".comfyui_server.pid"
 _ACTIVE_SERVER_PROCESS: subprocess.Popen[Any] | None = None
@@ -696,18 +699,15 @@ def main() -> int:
 
     # Stop mode
     if args.stop:
-        success = stop_server(args.server, timeout=args.timeout)
-        return 0 if success else 1
+        return 0 if stop_server(args.server, timeout=args.timeout) else 1
 
     # Fast check mode
     if args.check:
-        online = is_server_online(args.server, timeout=1.5)
-        if online:
+        if is_server_online(args.server, timeout=1.5):
             print(f"[ONLINE] ComfyUI server is running at {args.server}")
             return 0
-        else:
-            print(f"[OFFLINE] ComfyUI server is not responding at {args.server}")
-            return 1
+        print(f"[OFFLINE] ComfyUI server is not responding at {args.server}")
+        return 1
 
     # Detect mode
     if args.detect:
@@ -717,10 +717,8 @@ def main() -> int:
             return 1
         print(f"[FOUND] Installation: {inst.name} (mode: {inst.mode})")
         if inst.mode == "headless":
-            print(f"  Python:      {inst.python_exe}")
-            print(f"  Main Script: {inst.main_py}")
-            print(f"  Base Dir:    {inst.base_dir}")
-            print(f"  Model YAML:  {inst.extra_model_paths}")
+            print(f"  Python:      {inst.python_exe}\n  Main Script: {inst.main_py}")
+            print(f"  Base Dir:    {inst.base_dir}\n  Model YAML:  {inst.extra_model_paths}")
         elif inst.mode == "gui":
             print(f"  GUI Path:    {inst.gui_exe}")
         return 0
@@ -739,8 +737,7 @@ def main() -> int:
             print("        Please start ComfyUI manually or check your installation.")
             return 1
 
-        success = launch_server(inst, server=args.server, timeout=args.timeout)
-        return 0 if success else 1
+        return 0 if launch_server(inst, server=args.server, timeout=args.timeout) else 1
 
     return 0
 

@@ -97,7 +97,7 @@ class WorkflowTemplate:
         if mask_image_name is not None:
             placeholders["{{MASK_IMG}}"] = mask_image_name
 
-        self._substitute_placeholders_recursive(patched, placeholders)
+        self._substitute_placeholders_in_place(patched, placeholders)
 
         # 3. Fallback for legacy graphs without {{CAMPAIGN_IMG}} placeholder
         if not self._has_campaign_placeholder:
@@ -156,14 +156,7 @@ class WorkflowTemplate:
                     continue
                 class_type = node_def.get("class_type")
                 if class_type == "TextEncodeQwenImage21":
-                    # Preserve Qwen multimodal structural conditioning tokens if user did not provide them
-                    final_prompt = user_prompt
-                    if "<image1>" not in final_prompt or "<image2>" not in final_prompt:
-                        final_prompt = (
-                            f"In <image1>, replace the person with the target reference model from <image2>. "
-                            f"{user_prompt}"
-                        )
-                    node_def.setdefault("inputs", {})["prompt"] = final_prompt
+                    node_def.setdefault("inputs", {})["prompt"] = _format_qwen_prompt(user_prompt)
                 elif class_type == "CLIPTextEncode":
                     # Always skip negative conditioning nodes
                     if node_id in negative_node_ids:
@@ -178,7 +171,7 @@ class WorkflowTemplate:
 
         return patched
 
-    def _substitute_placeholders_recursive(
+    def _substitute_placeholders_in_place(
         self,
         target: Any,
         placeholders: dict[str, str],
@@ -187,18 +180,33 @@ class WorkflowTemplate:
         if isinstance(target, dict):
             for key, val in target.items():
                 if isinstance(val, str):
-                    for ph, repl in placeholders.items():
-                        if ph in val:
-                            val = val.replace(ph, repl)
-                    target[key] = val
+                    target[key] = _replace_string_tokens(val, placeholders)
                 elif isinstance(val, (dict, list)):
-                    self._substitute_placeholders_recursive(val, placeholders)
+                    self._substitute_placeholders_in_place(val, placeholders)
         elif isinstance(target, list):
             for i, val in enumerate(target):
                 if isinstance(val, str):
-                    for ph, repl in placeholders.items():
-                        if ph in val:
-                            val = val.replace(ph, repl)
-                    target[i] = val
+                    target[i] = _replace_string_tokens(val, placeholders)
                 elif isinstance(val, (dict, list)):
-                    self._substitute_placeholders_recursive(val, placeholders)
+                    self._substitute_placeholders_in_place(val, placeholders)
+
+    # Retain backward-compatible alias
+    _substitute_placeholders_recursive = _substitute_placeholders_in_place
+
+
+def _format_qwen_prompt(user_prompt: str) -> str:
+    """Ensure Qwen multimodal structural conditioning tokens are present in user prompt."""
+    if "<image1>" not in user_prompt or "<image2>" not in user_prompt:
+        return (
+            f"In <image1>, replace the person with the target reference model from <image2>. "
+            f"{user_prompt}"
+        )
+    return user_prompt
+
+
+def _replace_string_tokens(val: str, placeholders: dict[str, str]) -> str:
+    """Replace all placeholder occurrences within a target string value."""
+    for ph, repl in placeholders.items():
+        if ph in val:
+            val = val.replace(ph, repl)
+    return val

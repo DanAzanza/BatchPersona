@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 import os
 import sys
@@ -43,7 +44,7 @@ def resize_and_save(src_path: Path, dst_path: Path) -> None:
                 if current.size == (TARGET_WIDTH, TARGET_HEIGHT) and current.format == "PNG":
                     LOGGER.info("Asset already standardized at %s", dst_path.name)
                     return
-        except Exception:
+        except (OSError, ValueError, SyntaxError):
             pass
 
     with Image.open(src_path) as im:
@@ -59,10 +60,10 @@ def resize_and_save(src_path: Path, dst_path: Path) -> None:
         try:
             fitted.save(tmp_dst, format="PNG", optimize=True)
             tmp_dst.replace(dst_path)
-        except Exception:
+        finally:
             if tmp_dst.is_file():
-                tmp_dst.unlink(missing_ok=True)
-            raise
+                with contextlib.suppress(OSError):
+                    tmp_dst.unlink(missing_ok=True)
 
         LOGGER.info(
             "Exported asset: %s (%dx%d, %d bytes)",
@@ -98,36 +99,14 @@ def process_dataset(
     # 1. Explicit campaign_src or models_src mode
     if campaign_src is not None or models_src is not None:
         if campaign_src is not None:
-            if campaign_src.is_file():
-                if campaign_src.suffix.lower() in VALID_IMAGE_EXTENSIONS:
-                    resize_and_save(campaign_src, campaign_dir / f"{campaign_src.stem}.png")
-                    processed_count += 1
-                else:
-                    LOGGER.warning(
-                        "Campaign source file has unsupported extension: %s", campaign_src
-                    )
-            elif campaign_src.is_dir():
-                for f in sorted(campaign_src.iterdir()):
-                    if f.is_file() and f.suffix.lower() in VALID_IMAGE_EXTENSIONS:
-                        resize_and_save(f, campaign_dir / f"{f.stem}.png")
-                        processed_count += 1
-            else:
-                LOGGER.warning("Campaign source path not found: %s", campaign_src)
+            for f in _get_valid_image_files(campaign_src, label="campaign"):
+                resize_and_save(f, campaign_dir / f"{f.stem}.png")
+                processed_count += 1
 
         if models_src is not None:
-            if models_src.is_file():
-                if models_src.suffix.lower() in VALID_IMAGE_EXTENSIONS:
-                    resize_and_save(models_src, models_dir / f"{models_src.stem}.png")
-                    processed_count += 1
-                else:
-                    LOGGER.warning("Models source file has unsupported extension: %s", models_src)
-            elif models_src.is_dir():
-                for f in sorted(models_src.iterdir()):
-                    if f.is_file() and f.suffix.lower() in VALID_IMAGE_EXTENSIONS:
-                        resize_and_save(f, models_dir / f"{f.stem}.png")
-                        processed_count += 1
-            else:
-                LOGGER.warning("Models source directory not found: %s", models_src)
+            for f in _get_valid_image_files(models_src, label="models"):
+                resize_and_save(f, models_dir / f"{f.stem}.png")
+                processed_count += 1
 
         LOGGER.info(
             "Processed %d standardized full-body assets into %s",
@@ -247,6 +226,28 @@ def process_dataset(
         workspace_data_dir,
     )
     return processed_count
+
+
+def _get_valid_image_files(path: Path, label: str = "source") -> list[Path]:
+    """Retrieve list of valid image files from file or directory with diagnostic warnings."""
+    if path.is_file():
+        if path.suffix.lower() in VALID_IMAGE_EXTENSIONS:
+            return [path]
+        LOGGER.warning("%s source file has unsupported extension: %s", label.capitalize(), path)
+        return []
+    if path.is_dir():
+        return [
+            f
+            for f in sorted(path.iterdir())
+            if f.is_file() and f.suffix.lower() in VALID_IMAGE_EXTENSIONS
+        ]
+    not_found_msg = (
+        f"{label.capitalize()} source directory not found: %s"
+        if label == "models"
+        else f"{label.capitalize()} source path not found: %s"
+    )
+    LOGGER.warning(not_found_msg, path)
+    return []
 
 
 def parse_cli_args(args: list[str] | None = None) -> argparse.Namespace:

@@ -254,6 +254,7 @@ def test_backward_compatibility_shims() -> None:
     assert hasattr(shim_swapper, "JobStatus")
     assert hasattr(shim_housekeeper, "ComfyUIHousekeeper")
     assert hasattr(shim_generator, "generate_all_testdata")
+    assert hasattr(shim_generator, "FeatureStyle")
     assert hasattr(shim_preprocess, "process_dataset")
     assert hasattr(shim_ci, "run_all_ci_stages")
 

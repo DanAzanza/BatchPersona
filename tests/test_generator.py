@@ -11,6 +11,7 @@ from batchpersona.generator import (
     EAST_ASIA_PALETTE,
     NORDIC_PALETTE,
     SOUTH_AMERICA_PALETTE,
+    FeatureStyle,
     generate_all_testdata,
     synthesize_campaign_lookbook,
     synthesize_campaign_mask,
@@ -46,16 +47,30 @@ def test_synthesize_campaign_mask() -> None:
 
 
 def test_synthesize_model_portraits() -> None:
-    """Verify distinct archetype generation works across all palettes."""
+    """Verify distinct archetype generation works across all palettes with FeatureStyle enum."""
     palettes = [
-        (EAST_ASIA_PALETTE, "East Asia Female", False),
-        (SOUTH_AMERICA_PALETTE, "South America Male", True),
-        (NORDIC_PALETTE, "Nordic Female", False),
+        (EAST_ASIA_PALETTE, "East Asia Female", FeatureStyle.FEMININE),
+        (SOUTH_AMERICA_PALETTE, "South America Male", FeatureStyle.MASCULINE),
+        (NORDIC_PALETTE, "Nordic Female", FeatureStyle.FEMININE),
     ]
-    for pal, title, is_masculine in palettes:
-        img = synthesize_model_portrait(pal, title, size=256, is_masculine_features=is_masculine)
+    for pal, title, feat_style in palettes:
+        img = synthesize_model_portrait(pal, title, size=256, style=feat_style)
         assert img.size == (256, 256)
         assert img.mode == "RGB"
+
+    # Also verify backward-compatible positional and keyword boolean invocations
+    img_legacy = synthesize_model_portrait(
+        SOUTH_AMERICA_PALETTE, "Legacy Male", size=256, is_masculine_features=True
+    )
+    assert img_legacy.size == (256, 256)
+
+    img_pos_bool = synthesize_model_portrait(
+        SOUTH_AMERICA_PALETTE,
+        "Positional Bool Male",
+        256,
+        True,  # type: ignore[arg-type]
+    )
+    assert img_pos_bool.size == (256, 256)
 
 
 def test_generate_all_testdata(tmp_path: Path) -> None:
