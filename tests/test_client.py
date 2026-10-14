@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -9,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 import websocket
+from PIL import Image, PngImagePlugin
 
 from batchpersona.client import ComfyUIClient
 from batchpersona.models import (
@@ -155,6 +157,75 @@ def test_client_download_image(tmp_path: Path) -> None:
     assert target.is_file()
     assert target.read_bytes() == b"chunk1chunk2"
     assert not any(tmp_path.glob("*.part"))
+
+
+def test_client_download_image_strips_workflow_and_embeds_provenance(tmp_path: Path) -> None:
+    """Verify download_image strips ComfyUI workflow/prompt and embeds EU AI Act provenance."""
+    img = Image.new("RGB", (16, 16), color=(255, 0, 0))
+    pnginfo = PngImagePlugin.PngInfo()
+    pnginfo.add_text("prompt", '{"1": {"class_type": "KSampler"}}')
+    pnginfo.add_text("workflow", '{"nodes": [{"id": 1, "type": "KSampler"}]}')
+    pnginfo.add_text("custom_tag", "keep_me")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", pnginfo=pnginfo)
+    png_bytes = buf.getvalue()
+
+    mock_session = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.iter_content.return_value = [png_bytes]
+    mock_session.get.return_value = mock_resp
+
+    client = ComfyUIClient(server_address="127.0.0.1:8188", session=mock_session)
+    asset = OutputAsset(filename="result.png", subfolder="", image_type="output")
+    target = tmp_path / "result_processed.png"
+
+    client.download_image(asset, target, market_tag="latam", keep_workflow=False)
+
+    assert target.is_file()
+    with Image.open(target) as processed_im:
+        meta = getattr(processed_im, "text", {})
+        assert "prompt" not in meta
+        assert "workflow" not in meta
+        assert meta["Software"] == "BatchPersona"
+        assert meta["AI-Generated"] == "true"
+        assert meta["AI-System"] == "BatchPersona / ComfyUI"
+        assert meta["AI-Compliance"] == "EU-AI-Act-Article-50-Synthetic-Media"
+        assert meta["Market-Tag"] == "latam"
+        assert meta["custom_tag"] == "keep_me"
+
+
+def test_client_download_image_preserves_workflow_when_requested(tmp_path: Path) -> None:
+    """Verify download_image retains workflow and prompt when keep_workflow is True."""
+    img = Image.new("RGB", (16, 16), color=(0, 255, 0))
+    pnginfo = PngImagePlugin.PngInfo()
+    pnginfo.add_text("workflow", '{"nodes": []}')
+    pnginfo.add_text("prompt", '{"1": {}}')
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", pnginfo=pnginfo)
+    png_bytes = buf.getvalue()
+
+    mock_session = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.iter_content.return_value = [png_bytes]
+    mock_session.get.return_value = mock_resp
+
+    client = ComfyUIClient(server_address="127.0.0.1:8188", session=mock_session)
+    asset = OutputAsset(filename="raw.png", subfolder="", image_type="output")
+    target = tmp_path / "raw_processed.png"
+
+    client.download_image(asset, target, keep_workflow=True)
+
+    with Image.open(target) as processed_im:
+        meta = getattr(processed_im, "text", {})
+        assert "workflow" in meta
+        assert "prompt" in meta
+        assert meta["Software"] == "BatchPersona"
+        assert meta["AI-Generated"] == "true"
+        assert meta["Market-Tag"] == "global"
 
 
 def test_client_track_execution_success() -> None:

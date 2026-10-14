@@ -79,6 +79,7 @@ class SwapperConfig:
     prompt: str | None = None
     skip_existing: bool = False
     force: bool = False
+    keep_workflow_metadata: bool = False
 
     def __post_init__(self) -> None:
         """Validate configuration paths and parameters fail-fast."""

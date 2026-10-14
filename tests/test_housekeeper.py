@@ -297,7 +297,7 @@ def test_batch_swapper_with_housekeeper_integration(
         OutputAsset(filename="campaign_model_01.png", subfolder="", image_type="output")
     ]
 
-    def mock_download(asset: OutputAsset, target: Path) -> None:
+    def mock_download(asset: OutputAsset, target: Path, *args: object, **kwargs: object) -> None:
         target.write_bytes(b"final_download")
 
     mock_client.download_image.side_effect = mock_download

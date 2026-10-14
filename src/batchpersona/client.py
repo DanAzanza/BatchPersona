@@ -16,6 +16,7 @@ from typing import Any
 import requests
 import websocket
 
+from batchpersona.metadata import process_png_provenance_metadata
 from batchpersona.models import (
     ComfyAPIError,
     ComfyExecutionError,
@@ -124,7 +125,13 @@ class ComfyUIClient:
 
         return str(prompt_id)
 
-    def download_image(self, asset: OutputAsset, destination: Path) -> None:
+    def download_image(
+        self,
+        asset: OutputAsset,
+        destination: Path,
+        market_tag: str | None = None,
+        keep_workflow: bool = False,
+    ) -> None:
         """Download output asset from ComfyUI /view endpoint directly to destination path."""
         url = f"{self._http_base}/view"
         params = {
@@ -147,6 +154,14 @@ class ComfyUIClient:
                 for chunk in response.iter_content(chunk_size=65536):
                     if chunk:
                         f.write(chunk)
+
+            # Post-process PNG metadata for EU AI Act compliance & ComfyUI workflow stripping
+            process_png_provenance_metadata(
+                temp_dest,
+                market_tag=market_tag,
+                keep_workflow=keep_workflow,
+            )
+
             # Atomic replacement avoiding Windows file lock race conditions
             temp_dest.replace(destination)
         finally:

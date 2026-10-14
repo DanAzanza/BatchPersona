@@ -83,6 +83,12 @@ def test_parse_cli_args_new_overrides() -> None:
     assert parsed.seed == 424242
     assert parsed.resolution == 1024
     assert parsed.prompt == "A high fashion lookbook model"
+    assert parsed.keep_workflow_metadata is False
+
+    parsed_keep = parse_cli_args(
+        ["--campaign", "c.png", "--models-dir", "m", "--keep-workflow-metadata"]
+    )
+    assert parsed_keep.keep_workflow_metadata is True
 
 
 def test_prepare_dataset_cli_args() -> None:

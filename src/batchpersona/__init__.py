@@ -14,6 +14,7 @@ from batchpersona.launcher import (
     stop_server,
     unload_comfyui_vram,
 )
+from batchpersona.metadata import process_png_provenance_metadata
 from batchpersona.models import (
     COLOR_BOLD,
     COLOR_CYAN,
@@ -66,6 +67,7 @@ __all__ = [
     "is_loopback_host",
     "is_server_online",
     "launch_server",
+    "process_png_provenance_metadata",
     "stop_server",
     "unload_comfyui_vram",
 ]

@@ -123,7 +123,9 @@ def test_batch_swapper_end_to_end_mock(tmp_path: Path) -> None:
         OutputAsset(filename="out_mock.png", subfolder="", image_type="output")
     ]
 
-    def mock_download(asset: OutputAsset, destination: Path) -> None:
+    def mock_download(
+        asset: OutputAsset, destination: Path, *args: object, **kwargs: object
+    ) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b"rendered_model_result")
 
@@ -190,7 +192,9 @@ def test_batch_swapper_handles_partial_failure(tmp_path: Path) -> None:
 
     mock_client.track_execution.side_effect = mock_track
 
-    def mock_download(asset: OutputAsset, destination: Path) -> None:
+    def mock_download(
+        asset: OutputAsset, destination: Path, *args: object, **kwargs: object
+    ) -> None:
         destination.write_bytes(b"ok")
 
     mock_client.download_image.side_effect = mock_download
@@ -476,7 +480,9 @@ def test_batch_swapper_skip_existing_partial(tmp_path: Path) -> None:
         OutputAsset(filename="out.png", subfolder="", image_type="output")
     ]
 
-    def mock_download(asset: OutputAsset, destination: Path) -> None:
+    def mock_download(
+        asset: OutputAsset, destination: Path, *args: object, **kwargs: object
+    ) -> None:
         destination.write_bytes(b"newly_rendered")
 
     mock_client.download_image.side_effect = mock_download
@@ -699,7 +705,9 @@ def test_process_single_model_preserves_cache_on_success(tmp_path: Path) -> None
     mock_client.track_execution.return_value = [
         OutputAsset(filename="out.png", subfolder="", image_type="output")
     ]
-    mock_client.download_image.side_effect = lambda asset, dst: dst.write_bytes(b"done")
+    mock_client.download_image.side_effect = lambda asset, dst, *args, **kwargs: dst.write_bytes(
+        b"done"
+    )
 
     swapper = BatchSwapper(config=config, client=mock_client)
     res = swapper.process_single_model(model, "campaign_uploaded.png", None)

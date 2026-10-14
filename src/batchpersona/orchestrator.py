@@ -224,7 +224,12 @@ class BatchSwapper:
 
             # 5. Download primary output
             primary_asset = outputs[0]
-            self._client.download_image(primary_asset, final_target)
+            self._client.download_image(
+                primary_asset,
+                final_target,
+                market_tag=self._config.market_tag,
+                keep_workflow=self._config.keep_workflow_metadata,
+            )
 
             # 6. Housekeeping: Purge duplicate output asset from ComfyUI directory
             self._housekeeper.cleanup_output_asset(
@@ -556,6 +561,12 @@ def parse_cli_args(args: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Override positive instruction prompt",
     )
+    parser.add_argument(
+        "--keep-workflow-metadata",
+        action="store_true",
+        default=False,
+        help="Preserve internal ComfyUI prompt and workflow graph metadata in exported PNGs",
+    )
     return parser.parse_args(args)
 
 
@@ -582,6 +593,7 @@ def main(args: Sequence[str] | None = None) -> int:
         prompt=parsed_args.prompt,
         skip_existing=parsed_args.skip_existing,
         force=parsed_args.force,
+        keep_workflow_metadata=parsed_args.keep_workflow_metadata,
     )
 
     swapper = BatchSwapper(config)
