@@ -14,6 +14,7 @@ for p in [str(REPO_ROOT), str(SRC_DIR)]:
 from batchpersona.preprocess import (
     TARGET_HEIGHT,
     TARGET_WIDTH,
+    VALID_IMAGE_EXTENSIONS,
     main,
     parse_cli_args,
     process_dataset,
@@ -24,6 +25,7 @@ from batchpersona.preprocess import (
 __all__ = [
     "TARGET_HEIGHT",
     "TARGET_WIDTH",
+    "VALID_IMAGE_EXTENSIONS",
     "main",
     "parse_cli_args",
     "process_dataset",

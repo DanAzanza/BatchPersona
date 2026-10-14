@@ -90,6 +90,22 @@ def test_prepare_dataset_cli_args() -> None:
     args = prep_parse_cli_args(["--source-dir", "custom/src", "--output-dir", "custom/dst"])
     assert args.source_dir == Path("custom/src")
     assert args.output_dir == Path("custom/dst")
+    assert args.campaign_src is None
+    assert args.models_src is None
+
+    args_custom = prep_parse_cli_args(
+        [
+            "--campaign-src",
+            "campaigns/shoot.jpg",
+            "--models-src",
+            "portraits/",
+            "--output-dir",
+            "custom/data",
+        ]
+    )
+    assert args_custom.campaign_src == Path("campaigns/shoot.jpg")
+    assert args_custom.models_src == Path("portraits/")
+    assert args_custom.output_dir == Path("custom/data")
 
 
 def test_configure_logging() -> None:
@@ -154,6 +170,33 @@ def test_prepare_fullbody_dataset_main(tmp_path: Path, monkeypatch: pytest.Monke
     with pytest.raises(SystemExit) as exc_info:
         prep_main()
     assert exc_info.value.code == 1
+
+
+def test_prepare_fullbody_dataset_main_explicit_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify scripts.prepare_fullbody_dataset main entrypoint exits 0 upon successful processing."""
+    from PIL import Image
+
+    src_img = tmp_path / "custom_campaign.png"
+    Image.new("RGB", (500, 700), color=(12, 34, 56)).save(src_img)
+    out_dir = tmp_path / "out_cli"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "prepare_fullbody_dataset.py",
+            "--campaign-src",
+            str(src_img),
+            "--output-dir",
+            str(out_dir),
+        ],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        prep_main()
+    assert exc_info.value.code == 0
+    assert (out_dir / "input_campaign" / "custom_campaign.png").is_file()
 
 
 def test_batch_swapper_main_exit_code_zero_when_all_skipped(
