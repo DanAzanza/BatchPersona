@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import logging
 import shutil
 import subprocess
@@ -51,6 +52,7 @@ def run_all_ci_stages(
     python_executable: str = sys.executable,
     skip_lint: bool = False,
     skip_tests: bool = False,
+    keep_coverage: bool = False,
     run_stage_fn: Callable[..., bool] | None = None,
     staging_dir: Path | None = None,
 ) -> int:
@@ -118,8 +120,16 @@ def run_all_ci_stages(
             "--cov-report=xml",
             "-v",
         ]
-        if not stage_runner("Pytest Regression Suite", test_cmd):
-            return 1
+        try:
+            if not stage_runner("Pytest Regression Suite", test_cmd):
+                return 1
+        finally:
+            if not keep_coverage:
+                for cov_file in [REPO_ROOT / ".coverage", REPO_ROOT / "coverage.xml"]:
+                    if cov_file.is_file():
+                        with contextlib.suppress(OSError):
+                            cov_file.unlink()
+                            LOGGER.debug("Cleaned up coverage artifact: %s", cov_file)
 
     LOGGER.info("==================================================")
     LOGGER.info("[ALL CI CHECKS PASSED] Local CI parity 100%% verified.")
@@ -143,6 +153,11 @@ def parse_cli_args(args: Sequence[str] | None = None) -> argparse.Namespace:
         help="Skip pytest regression suite.",
     )
     parser.add_argument(
+        "--keep-coverage",
+        action="store_true",
+        help="Keep temporary coverage artifacts (.coverage and coverage.xml) after CI run.",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -158,6 +173,7 @@ def main(args: Sequence[str] | None = None) -> int:
     return run_all_ci_stages(
         skip_lint=parsed.skip_lint,
         skip_tests=parsed.skip_tests,
+        keep_coverage=parsed.keep_coverage,
     )
 
 

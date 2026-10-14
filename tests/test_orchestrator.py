@@ -479,3 +479,56 @@ def test_process_single_model_frees_memory_on_failure(tmp_path: Path) -> None:
     assert res_err.status == JobStatus.FAILED
     mock_client_err.free_memory.assert_called_once_with(unload_models=True)
     mock_client_err.interrupt_execution.assert_called_once()
+
+
+def test_process_single_model_market_tag_normalization(tmp_path: Path) -> None:
+    """Verify market_tag passed to download_image is normalized and defaults to 'global'."""
+    campaign = tmp_path / "campaign.png"
+    campaign.write_bytes(b"campaign")
+    model = tmp_path / "model.png"
+    model.write_bytes(b"model")
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    wf = tmp_path / "wf.json"
+    wf.write_text(
+        json.dumps({"1": {"class_type": "LoadImage", "inputs": {}}}),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+
+    # Case 1: Custom non-global market tag with uppercase and symbols
+    config_apac = SwapperConfig(
+        server_address="127.0.0.1:8000",
+        campaign_path=campaign,
+        models_dir=models_dir,
+        output_dir=output_dir,
+        workflow_path=wf,
+        market_tag="  APAC_2026!  ",
+    )
+    mock_client = make_mock_client()
+    mock_client.track_execution.return_value = [
+        OutputAsset(filename="asset.png", subfolder="", image_type="output")
+    ]
+    swapper = BatchSwapper(config=config_apac, client=mock_client)
+    res = swapper.process_single_model(model, "campaign_up.png", None)
+    assert res.status == JobStatus.SUCCESS
+    mock_client.download_image.assert_called_once()
+    _, kwargs = mock_client.download_image.call_args
+    assert kwargs.get("market_tag") == "apac_2026"
+
+    # Case 2: Market tag explicitly set to 'global' or empty
+    for raw_tag in ["global", "GLOBAL", ""]:
+        mock_client.download_image.reset_mock()
+        config_global = SwapperConfig(
+            server_address="127.0.0.1:8000",
+            campaign_path=campaign,
+            models_dir=models_dir,
+            output_dir=output_dir,
+            workflow_path=wf,
+            market_tag=raw_tag,
+        )
+        swapper_global = BatchSwapper(config=config_global, client=mock_client)
+        res_global = swapper_global.process_single_model(model, "campaign_up.png", None)
+        assert res_global.status == JobStatus.SUCCESS
+        _, kwargs_global = mock_client.download_image.call_args
+        assert kwargs_global.get("market_tag") == "global"

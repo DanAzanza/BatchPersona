@@ -8,7 +8,7 @@
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%2F%20WebSocket-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Architecture: DiT](https://img.shields.io/badge/Diffusion-Qwen%20Image%202.1%20DiT-purple.svg)](docs/ARCHITECTURE.md)
 [![Coverage: 91% Branch](https://img.shields.io/badge/test%20coverage-91%25%20branch-brightgreen.svg)](tests/)
-[![Tests: 171 Passed](https://img.shields.io/badge/tests-171%20passed-success.svg)](tests/)
+[![Tests: 175 Passed](https://img.shields.io/badge/tests-175%20passed-success.svg)](tests/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -112,9 +112,10 @@ sequenceDiagram
 
     WS-->>CLI: Frame: {"type": "executed", "data": {"output": {"images": [...]}}}
     CLI->>REST: GET /view?filename=...&type=output
-    REST-->>CLI: Image Binary Stream
-    CLI->>CLI: Atomic File Rename (*.part -> destination.png)
-    CLI->>REST: POST /free {"unload_models": false, "free_memory": true}
+    REST-->>CLI: Image Binary Stream (*.part staging)
+    CLI->>CLI: Embed EU AI Act Provenance & Strip Workflow (process_png_provenance_metadata)
+    CLI->>CLI: Atomic File Replacement (*.part -> destination.png)
+    Note over CLI,GPU: Execution cache kept warm across iterations (no /free per item)
 ```
 
 ---
@@ -124,7 +125,7 @@ sequenceDiagram
 * **Layered Architecture & Strict Typing**: Modern static type annotations compliant with Python 3.10+, Pyright (0 errors / 0 warnings), immutable dataclasses, explicit generic collections, and strict separation of presentation, transport, and domain logic.
 * **Fail-Fast Configuration**: `SwapperConfig` validates file existence, directory access, and timeout bounds immediately at initialization, avoiding runtime failures halfway through a batch.
 * **Deadlock-Free WebSockets**: `track_execution` enforces non-blocking socket timeouts (`ws.settimeout(min(2.0, remaining))`) with overall wall-clock deadlines to prevent infinite hangs if the ComfyUI backend stalls.
-* **OOM & Memory Management**: Between batch iterations, the client invokes `/free` with PyTorch CUDA cache clearing. In the event of CUDA Out-Of-Memory errors, it triggers full model eviction (`unload_models=True`) before continuing.
+* **Warm-Cache Execution & OOM Resilience**: BatchPersona keeps ComfyUI's execution cache warm across batch iterations to eliminate redundant re-encoding of base campaign lookbooks and text conditioning. Memory reclamation (`/free` with `unload_models=True`) is invoked reactively upon CUDA Out-Of-Memory (OOM) recovery or deterministically in the session teardown at the end of `run_batch()` to release all VRAM.
 * **Smart Local Housekeeping**: Safely purges intermediate uploads and generated outputs from ComfyUI directories to prevent storage bloat, protected by canonical path checks, pre-existing asset guards, and Windows lock retries.
 * **Atomic File Writes**: Image assets are streamed to unique temporary staging files (`.part`) and atomically replaced into the target directory to prevent truncated assets during crashes or network interruptions.
 * **CI-Aware Progress Logging**: Automatically senses interactive TTY vs. headless CI environments, toggling between an in-place ANSI progress bar and clean 25% milestone logging to eliminate log pollution.

@@ -12,7 +12,7 @@ BatchPersona is designed as a resilient, headless Python batch-processing engine
 
 * **Zero-Artifact Boundary Integrity**: Eliminates the seam halos, edge bleeding, and hair fringes characteristic of classic binary inpainting masks by utilizing full-context multimodal DiT attention.
 * **Deterministic Headless Execution**: Communicates with ComfyUI via low-level REST and WebSocket protocols, converting interactive UI workflows into execution-ready Prompt API graphs without human intervention.
-* **Bounded Resource Utilization**: Guarantees stable continuous execution on consumer-grade high-VRAM GPUs (e.g., NVIDIA GeForce RTX 4060 Ti 16GB) via proactive PyTorch CUDA cache recycling and reactive Out-Of-Memory (OOM) eviction.
+* **Bounded Resource Utilization**: Guarantees stable continuous execution on consumer-grade high-VRAM GPUs (e.g., NVIDIA GeForce RTX 4060 Ti 16GB) via warm execution cache preservation across iterations, reactive Out-Of-Memory (OOM) eviction (`unload_models: true`), and deterministic session teardown.
 * **Fault-Tolerant I/O**: Employs atomic staging file writes (`.part` staging followed by atomic renaming) to ensure zero asset corruption in the event of pipeline interruption.
 
 ### 1.2 Component Topology
@@ -27,7 +27,7 @@ flowchart TD
         Patcher["Workflow Graph Patcher"]
         WSHandler["WebSocket State Machine"]
         AtomicIO["Atomic File Exporter (.part -> .png)"]
-        MemMgr["Memory Manager (/free)"]
+        MemMgr["Memory Manager (/free: Reactive OOM & Teardown)"]
     end
 
     subgraph Server ["ComfyUI Headless Server (:8000 / :8188)"]
@@ -56,7 +56,7 @@ flowchart TD
     REST -->|GET /view Binary Stream| AtomicIO
     AtomicIO -->|Atomic Replace| Disk[("data/output/*.png")]
     Batch --> MemMgr
-    MemMgr -->|POST /free (Cache Purge)| REST
+    MemMgr -->|POST /free (OOM Eviction / Teardown)| REST
 ```
 
 ---
@@ -229,16 +229,18 @@ Total Dedicated VRAM (NVIDIA RTX 4060 Ti 16GB): 16,380 MiB
 Peak Memory Utilization: ~95.2% (~15,600 MiB)
 ```
 
-### 5.2 Proactive vs. Reactive Memory Reclamation
+### 5.2 Execution Cache Preservation vs. Reactive Memory Reclamation
 
-Because PyTorch's native caching allocator (`torch.cuda.memory_cached()`) retains freed tensors in its internal memory pool to avoid reallocation latency, running consecutive batch iterations without management causes address space fragmentation, ultimately triggering CUDA OOM errors.
+Because PyTorch's native caching allocator (`torch.cuda.memory_cached()`) retains freed tensors in its internal memory pool to avoid reallocation latency, managing memory across multi-asset runs is critical. However, flushing the cache between every iteration incurs substantial performance penalties: in multi-model batch swaps, the base campaign image and prompt instructions remain identical across iterations. Flushing ComfyUI's execution cache (`/free`) between iterations would force ComfyUI to redundantly reload and re-encode the base lookbook image and prompt text encoders on every model swap.
 
-BatchPersona mitigates this through a dual-tiered memory management strategy:
+BatchPersona intentionally preserves ComfyUI's execution cache warm across batch iterations to eliminate redundant compute, while employing a resilient dual-tiered memory management strategy:
 
-1. **Proactive Reclamation (`free_memory=True, unload_models=False`)**:
-   After each successful swap, the pipeline issues a non-destructive cleanup request to ComfyUI's `/free` endpoint. This calls `torch.cuda.empty_cache()` without evicting the loaded model weights from VRAM, keeping warm-start latency low while defragmenting memory.
-2. **Reactive Eviction (`unload_models=True, free_memory=True`)**:
-   If an iteration encounters an unrecoverable CUDA Out-Of-Memory exception, the pipeline marks the job as failed, issues a full eviction request (`/free` with model unloads), purges PyTorch CUDA cache allocations, and resets GPU state to allow subsequent batch items to proceed cleanly without cascading hangs.
+1. **Warm Execution Cache Across Iterations**:
+   Between successful model swaps, the pipeline does **not** call `/free`. The loaded DiT checkpoint, text encoders, VAE, and invariant intermediate node evaluations (base campaign image latents and conditioning embeddings) remain resident in VRAM and ComfyUI's graph cache. This avoids redundant re-encoding and significantly reduces per-model generation latency.
+2. **Reactive Eviction on OOM (`unload_models=True, free_memory=True`)**:
+   If an iteration encounters an unrecoverable CUDA Out-Of-Memory exception, the pipeline marks the job as failed, issues a full eviction request (`/free` with `unload_models=True`), purges PyTorch CUDA cache allocations, and resets GPU state to allow subsequent batch items to proceed cleanly without cascading hangs.
+3. **Deterministic Batch Teardown**:
+   Upon completing or aborting the batch run (`finally` block in `run_batch()`), BatchPersona deterministically calls `/free` with `unload_models=True` to release all GPU VRAM back to the operating system.
 
 ---
 
@@ -307,14 +309,14 @@ The following benchmarks represent empirical workstation reference measurements 
 | **DiT Flow-Matching Sampling** (25 steps) | $48.20 \pm 1.40\text{ s}$ | Tensor compute ($896\times 1152$, Euler) |
 | **Spatial VAE Latent Decode** | $2.45 \pm 0.20\text{ s}$ | FP16 VAE tiling & RGB projection |
 | **Binary Download & Atomic Write** | $0.32 \pm 0.05\text{ s}$ | Streaming I/O & atomic NTFS replace |
-| **Housekeeping & CUDA Reclamation** | $0.18 \pm 0.03\text{ s}$ | Asset de-duplication & `/free` cache defrag |
+| **Intermediate Housekeeping** | $0.18 \pm 0.03\text{ s}$ | Intermediate asset de-duplication & local cleanup |
 | **Total End-to-End per Asset** | **$53.19 \pm 1.85\text{ s}$** | Continuous batch execution throughput |
 
 ### 7.2 Quality Gate & Test Coverage Metrics
 
 | Quality Dimension | Metric | Tooling & Enforcement |
 | :--- | :--- | :--- |
-| **Automated Test Suite** | **171 passing tests** | `pytest` 9.1+ |
+| **Automated Test Suite** | **175 passing tests** | `pytest` 9.1+ |
 | **Branch Coverage** | **91.1%** (mandatory $\ge 90\%$) | `pytest-cov` with branch analysis |
 | **Static Type Verification** | **0 errors, 0 warnings** | Microsoft Pyright 1.1+ (`src`, `scripts`, `tests`) |
 | **Linting & Code Style** | **0 diagnostics** | Astral Ruff (PEP 8, Flake8, Bugbear) |

@@ -201,9 +201,70 @@ def test_parse_cli_args_and_main(monkeypatch: pytest.MonkeyPatch) -> None:
     assert args.skip_lint is True
     assert args.skip_tests is True
     assert args.verbose is True
+    assert args.keep_coverage is False
+
+    args_keep = parse_cli_args(["--keep-coverage"])
+    assert args_keep.keep_coverage is True
 
     monkeypatch.setattr("scripts.run_ci_locally.run_all_ci_stages", lambda **kwargs: 0)
     assert ci_main(["--skip-lint"]) == 0
+
+
+def test_run_all_ci_stages_coverage_cleanup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Verify run_all_ci_stages unlinks coverage artifacts by default and keeps them when requested."""
+    fake_repo = tmp_path / "fake_repo"
+    fake_repo.mkdir()
+    monkeypatch.setattr("batchpersona.ci.REPO_ROOT", fake_repo)
+
+    cov_file = fake_repo / ".coverage"
+    xml_file = fake_repo / "coverage.xml"
+
+    def mock_runner(stage_name: str, cmd: list[str], cwd: Path | None = None) -> bool:
+        if stage_name == "CI Synthetic Data Generator":
+            staging = tmp_path / "staging"
+            (staging / "input_campaign").mkdir(parents=True, exist_ok=True)
+            (staging / "input_models").mkdir(parents=True, exist_ok=True)
+            for f in [
+                "campaign_summer_lookbook.png",
+                "campaign_summer_mask.png",
+            ]:
+                (staging / "input_campaign" / f).write_bytes(b"data")
+            for f in [
+                "model_east_asia_f01.png",
+                "model_south_america_m01.png",
+                "model_nordic_f01.png",
+            ]:
+                (staging / "input_models" / f).write_bytes(b"data")
+        elif stage_name == "Pytest Regression Suite":
+            cov_file.write_bytes(b"coverage_data")
+            xml_file.write_bytes(b"<coverage/>")
+        return True
+
+    # Run with default keep_coverage=False
+    code = run_all_ci_stages(
+        python_executable="python",
+        skip_lint=True,
+        keep_coverage=False,
+        run_stage_fn=mock_runner,
+        staging_dir=tmp_path / "staging",
+    )
+    assert code == 0
+    assert not cov_file.exists()
+    assert not xml_file.exists()
+
+    # Run with keep_coverage=True
+    code_keep = run_all_ci_stages(
+        python_executable="python",
+        skip_lint=True,
+        keep_coverage=True,
+        run_stage_fn=mock_runner,
+        staging_dir=tmp_path / "staging",
+    )
+    assert code_keep == 0
+    assert cov_file.is_file()
+    assert xml_file.is_file()
 
 
 def test_python_310_compatibility() -> None:

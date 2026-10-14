@@ -29,6 +29,7 @@ def main(args: Sequence[str] | None = None) -> int:
     return runner(
         skip_lint=parsed.skip_lint,
         skip_tests=parsed.skip_tests,
+        keep_coverage=getattr(parsed, "keep_coverage", False),
     )
 
 
@@ -41,6 +42,7 @@ def run_all_ci_stages(
     python_executable: str = sys.executable,
     skip_lint: bool = False,
     skip_tests: bool = False,
+    keep_coverage: bool = False,
     **kwargs: Any,
 ) -> int:
     """Run all CI pipeline stages in sequence."""
@@ -53,6 +55,7 @@ def run_all_ci_stages(
         python_executable=python_executable,
         skip_lint=skip_lint,
         skip_tests=skip_tests,
+        keep_coverage=keep_coverage,
         run_stage_fn=stage_runner,
         staging_dir=staging_dir,
     )

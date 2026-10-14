@@ -227,7 +227,7 @@ class BatchSwapper:
             self._client.download_image(
                 primary_asset,
                 final_target,
-                market_tag=self._config.market_tag,
+                market_tag=self._config.clean_market_tag or "global",
                 keep_workflow=self._config.keep_workflow_metadata,
             )
 
