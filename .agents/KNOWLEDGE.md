@@ -82,7 +82,9 @@
   - `tests/test_server_lifecycle.py` - Server process supervision, PID management, and safe termination.
   - `tests/test_run_pipeline.py` - Interactive console menu and end-to-end execution flow.
   - `tests/test_ci_parity.py` - Multi-stage GitHub Actions CI equivalence and backward-compatibility shims.
+  - `tests/test_packaging.py` - Standalone distribution packaging, file whitelisting, Unix permissions, and SHA-256 generation.
 - Full local CI Quality Gate: `python scripts/run_ci_locally.py` (CLI: `batchpersona-ci`)
+- Deterministic release archive packaging: `python scripts/package_release.py --version <X.Y.Z>` (CLI: `batchpersona-package`)
 - Code formatting & linting: `python -m ruff check .` and `python -m ruff format --check .`
 - Static type checking: `python -m pyright src scripts tests`
 - Procedural synthetic test data generation: `python scripts/generate_testdata.py` (CLI: `batchpersona-testdata`)

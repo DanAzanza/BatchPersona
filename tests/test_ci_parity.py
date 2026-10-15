@@ -131,6 +131,19 @@ def test_ci_workflow_yaml_file_integrity() -> None:
     assert "pip install -e ." in content
 
 
+def test_release_workflow_yaml_file_integrity() -> None:
+    """Verify GitHub Actions Release workflow references packaging, quality gate, and gh release."""
+    release_yaml = REPO_ROOT / ".github" / "workflows" / "release.yml"
+    assert release_yaml.is_file(), "Release workflow .github/workflows/release.yml must exist"
+
+    content = release_yaml.read_text(encoding="utf-8")
+    assert "scripts/package_release.py" in content
+    assert "scripts/run_ci_locally.py" in content
+    assert "gh release create" in content
+    assert "contents: write" in content
+    assert "python-version" in content
+
+
 def test_run_stage_success_and_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify run_stage reports True on returncode 0 and False otherwise."""
     mock_run = MagicMock()
@@ -296,6 +309,7 @@ def test_backward_compatibility_shims() -> None:
     import scripts.generate_testdata as shim_generator
     import scripts.housekeeper as shim_housekeeper
     import scripts.launch_comfyui as shim_launcher
+    import scripts.package_release as shim_package
     import scripts.prepare_fullbody_dataset as shim_preprocess
     import scripts.run_ci_locally as shim_ci
     import scripts.run_pipeline as shim_pipeline
@@ -318,6 +332,8 @@ def test_backward_compatibility_shims() -> None:
     assert hasattr(shim_generator, "FeatureStyle")
     assert hasattr(shim_preprocess, "process_dataset")
     assert hasattr(shim_ci, "run_all_ci_stages")
+    assert hasattr(shim_package, "build_release_package")
+    assert hasattr(shim_package, "main")
 
 
 def test_run_all_ci_stages_staging_missing_asset(

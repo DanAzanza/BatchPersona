@@ -49,6 +49,7 @@ batchpersona-launcher = "batchpersona.launcher:main"
 batchpersona-prep = "batchpersona.preprocess:main"
 batchpersona-testdata = "batchpersona.generator:main"
 batchpersona-ci = "batchpersona.ci:main"
+batchpersona-package = "batchpersona.packaging:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

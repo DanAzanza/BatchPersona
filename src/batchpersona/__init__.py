@@ -33,6 +33,7 @@ from batchpersona.models import (
     SwapperConfig,
 )
 from batchpersona.orchestrator import BatchSwapper, configure_logging
+from batchpersona.packaging import build_release_package, compute_sha256, validate_package
 from batchpersona.template import WorkflowTemplate
 
 __version__ = "1.0.0"
@@ -60,6 +61,8 @@ __all__ = [
     "WorkflowTemplate",
     "__version__",
     "build_headless_command",
+    "build_release_package",
+    "compute_sha256",
     "configure_logging",
     "create_housekeeper",
     "detect_comfyui",
@@ -70,4 +73,5 @@ __all__ = [
     "process_png_provenance_metadata",
     "stop_server",
     "unload_comfyui_vram",
+    "validate_package",
 ]

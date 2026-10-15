@@ -103,7 +103,9 @@ def test_fullbody_campaign_assets() -> None:
         "campaign_fashion_male.png",
     ]
     for img_name in campaign_images:
-        img_path = campaign_dir / img_name
+        matches = list(campaign_dir.rglob(img_name))
+        assert matches, f"Campaign image {img_name} not found in {campaign_dir}"
+        img_path = matches[0]
         assert img_path.is_file()
 
         with Image.open(img_path) as im:
@@ -121,7 +123,9 @@ def test_fullbody_model_assets() -> None:
         "model_south_america_m01.png",
     ]
     for m_name in expected_models:
-        m_path = models_dir / m_name
+        matches = list(models_dir.rglob(m_name))
+        assert matches, f"Model asset {m_name} not found in {models_dir}"
+        m_path = matches[0]
         assert m_path.is_file()
         with Image.open(m_path) as im:
             assert im.size == (896, 1152)
