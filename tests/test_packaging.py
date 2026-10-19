@@ -66,6 +66,39 @@ def test_collect_distribution_files_from_real_repo() -> None:
     assert "src/batchpersona/packaging.py" in arcnames
     assert "scripts/package_release.py" in arcnames
     assert "workflows/model_swap_qwen21_maskless_api.json" in arcnames
+    assert "data/output/.gitkeep" in arcnames
+    assert "data/input_campaign/campaign_fashion_female.png" in arcnames
+    assert "data/input_campaign/Qwen_image_2.1_00001.png" in arcnames
+    assert "data/input_campaign/Male/campaign_fashion_male.png" in arcnames
+    assert "data/input_models/model_east_asia_f01.png" in arcnames
+    assert "data/input_models/Male/model_west_africa_m01.png" in arcnames
+
+
+def test_collect_distribution_files_data_output_exclusion(tmp_path: Path) -> None:
+    """Verify that arbitrary data files are included while output artifacts are excluded."""
+    fake_repo = tmp_path / "fake_repo"
+    fake_repo.mkdir()
+
+    # Create root files
+    (fake_repo / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    (fake_repo / "data" / "input_campaign" / "sub").mkdir(parents=True)
+    (fake_repo / "data" / "input_models").mkdir(parents=True)
+    (fake_repo / "data" / "output").mkdir(parents=True)
+
+    (fake_repo / "data" / "input_campaign" / "image_a.png").write_bytes(b"image_a")
+    (fake_repo / "data" / "input_campaign" / "sub" / "image_b.png").write_bytes(b"image_b")
+    (fake_repo / "data" / "input_models" / "model_x.png").write_bytes(b"model_x")
+    (fake_repo / "data" / "output" / ".gitkeep").write_bytes(b"")
+    (fake_repo / "data" / "output" / "batch_result.png").write_bytes(b"result")
+
+    collected = collect_distribution_files(fake_repo)
+    arcnames = {arc for _, arc in collected}
+
+    assert "data/input_campaign/image_a.png" in arcnames
+    assert "data/input_campaign/sub/image_b.png" in arcnames
+    assert "data/input_models/model_x.png" in arcnames
+    assert "data/output/.gitkeep" in arcnames
+    assert "data/output/batch_result.png" not in arcnames
 
 
 def test_build_release_package_mock_repo(tmp_path: Path) -> None:

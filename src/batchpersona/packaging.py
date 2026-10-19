@@ -109,26 +109,14 @@ def collect_distribution_files(repo_root: Path) -> list[tuple[Path, str]]:
     # 3. Clean runtime dataset scaffold and sample assets
     data_dir = repo_root / "data"
     if data_dir.is_dir():
-        # Include data/output/.gitkeep
-        output_gitkeep = data_dir / "output" / ".gitkeep"
-        if output_gitkeep.is_file():
-            collected.append((output_gitkeep, "data/output/.gitkeep"))
-
-        # Include sample campaign lookbooks (excluding personal test generations)
-        campaign_dir = data_dir / "input_campaign"
-        if campaign_dir.is_dir():
-            for f in sorted(campaign_dir.rglob("campaign_fashion_*.png")):
-                if f.is_file():
-                    rel_p = f.relative_to(data_dir).as_posix()
-                    collected.append((f, f"data/{rel_p}"))
-
-        # Include sample model portraits
-        models_dir = data_dir / "input_models"
-        if models_dir.is_dir():
-            for f in sorted(models_dir.rglob("model_*.png")):
-                if f.is_file():
-                    rel_p = f.relative_to(data_dir).as_posix()
-                    collected.append((f, f"data/{rel_p}"))
+        for path in sorted(data_dir.rglob("*")):
+            if not path.is_file() or should_ignore(path):
+                continue
+            rel_path = path.relative_to(repo_root).as_posix()
+            # In data/output, only include .gitkeep so batch run outputs are not packaged
+            if rel_path.startswith("data/output/") and path.name != ".gitkeep":
+                continue
+            collected.append((path, rel_path))
 
     return collected
 
