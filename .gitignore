@@ -46,7 +46,8 @@ Desktop.ini
 data/output/*.png
 !data/output/.gitkeep
 data_ci/
-data_synthetic/
+tests/data_synthetic/output/*.png
+!tests/data_synthetic/output/.gitkeep
 .ci_local_staging/
 data/test_eval/
 .env

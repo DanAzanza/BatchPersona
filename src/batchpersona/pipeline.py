@@ -125,7 +125,7 @@ def run_commercial_swap(
 
 def run_quick_dry_run(
     server: str = DEFAULT_SERVER_ADDRESS,
-    synthetic_dir: Path = Path("data_synthetic"),
+    synthetic_dir: Path = Path("tests/data_synthetic"),
     timeout: float = 30.0,
 ) -> int:
     """Execute instant zero-GPU dry-run using synthetic assets and composite workflow."""

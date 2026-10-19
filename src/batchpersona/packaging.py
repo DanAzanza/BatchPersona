@@ -104,6 +104,8 @@ def collect_distribution_files(repo_root: Path) -> list[tuple[Path, str]]:
             if not path.is_file() or should_ignore(path):
                 continue
             rel_path = path.relative_to(repo_root).as_posix()
+            if rel_path.startswith("tests/data_synthetic/output/") and path.name != ".gitkeep":
+                continue
             collected.append((path, rel_path))
 
     # 3. Clean runtime dataset scaffold and sample assets
