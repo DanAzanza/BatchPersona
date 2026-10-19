@@ -128,51 +128,17 @@ def test_run_quick_dry_run_server_offline() -> None:
 
 
 def test_run_quick_dry_run_with_missing_synthetic_data(tmp_path: Path) -> None:
-    """Verify synthetic data generation is triggered if missing."""
-    synthetic_dir = tmp_path / "synthetic"
-    mock_result = MagicMock()
-    mock_result.status = "SUCCESS"
+    """Verify quick dry run halts cleanly with error when synthetic data is missing."""
+    synthetic_dir = tmp_path / "empty_synthetic"
+    synthetic_dir.mkdir()
 
-    def fake_generate(**kwargs: object) -> list[Path]:
-        (synthetic_dir / "input_campaign").mkdir(parents=True, exist_ok=True)
-        (synthetic_dir / "input_models").mkdir(parents=True, exist_ok=True)
-        f1 = synthetic_dir / "input_campaign" / "campaign_summer_lookbook.png"
-        f2 = synthetic_dir / "input_campaign" / "campaign_summer_mask.png"
-        f1.touch()
-        f2.touch()
-        return [f1, f2]
-
-    with (
-        patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
-        patch("batchpersona.pipeline.generate_all_testdata", side_effect=fake_generate) as mock_gen,
-        patch("batchpersona.pipeline.BatchSwapper") as mock_swapper_cls,
-    ):
-        mock_swapper = mock_swapper_cls.return_value
-        mock_swapper.run_batch.return_value = [mock_result]
-
-        code = run_quick_dry_run(synthetic_dir=synthetic_dir)
-        assert code == 0
-        assert mock_gen.call_count == 1
-        assert mock_swapper_cls.call_count == 1
-
-
-def test_run_quick_dry_run_generation_failure(tmp_path: Path) -> None:
-    """Verify failure to generate synthetic data stops execution."""
-    synthetic_dir = tmp_path / "synthetic"
-
-    with (
-        patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
-        patch("batchpersona.pipeline.generate_all_testdata", return_value=[]) as mock_gen,
-        patch("batchpersona.pipeline.BatchSwapper") as mock_swapper_cls,
-    ):
+    with patch("batchpersona.pipeline.ensure_server_ready", return_value=True):
         code = run_quick_dry_run(synthetic_dir=synthetic_dir)
         assert code == 1
-        assert mock_gen.call_count == 1
-        assert mock_swapper_cls.call_count == 0
 
 
 def test_run_quick_dry_run_existing_data(tmp_path: Path) -> None:
-    """Verify synthetic data generation is skipped if already present."""
+    """Verify quick dry run executes batch swapper when assets are present."""
     synthetic_dir = tmp_path / "synthetic"
     camp_dir = synthetic_dir / "input_campaign"
     camp_dir.mkdir(parents=True)
@@ -181,11 +147,10 @@ def test_run_quick_dry_run_existing_data(tmp_path: Path) -> None:
     (synthetic_dir / "input_models").mkdir(parents=True)
 
     mock_result = MagicMock()
-    mock_result.status = "SUCCESS"
+    mock_result.status = JobStatus.SUCCESS
 
     with (
         patch("batchpersona.pipeline.ensure_server_ready", return_value=True),
-        patch("batchpersona.pipeline.generate_all_testdata") as mock_gen,
         patch("batchpersona.pipeline.BatchSwapper") as mock_swapper_cls,
     ):
         mock_swapper = mock_swapper_cls.return_value
@@ -193,8 +158,19 @@ def test_run_quick_dry_run_existing_data(tmp_path: Path) -> None:
 
         code = run_quick_dry_run(synthetic_dir=synthetic_dir)
         assert code == 0
-        assert mock_gen.call_count == 0
         assert mock_swapper_cls.call_count == 1
+
+        # Test empty results return code 2
+        mock_swapper.run_batch.return_value = []
+        code_empty = run_quick_dry_run(synthetic_dir=synthetic_dir)
+        assert code_empty == 2
+
+        # Test failure results return code 1
+        mock_fail = MagicMock()
+        mock_fail.status = JobStatus.FAILED
+        mock_swapper.run_batch.return_value = [mock_fail]
+        code_fail = run_quick_dry_run(synthetic_dir=synthetic_dir)
+        assert code_fail == 1
 
 
 def test_run_quality_gate() -> None:

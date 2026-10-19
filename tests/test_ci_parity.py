@@ -17,7 +17,6 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from PIL import Image
 
 from scripts.run_ci_locally import (
     main as ci_main,
@@ -88,37 +87,6 @@ def test_requirements_dependencies_complete() -> None:
         )
 
 
-def test_ci_synthetic_data_generation_step(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify generate_testdata.py executes the exact CI step (--size 256) and produces valid assets."""
-    from scripts.generate_testdata import main as gen_main
-
-    ci_staging = tmp_path / "data_ci_test"
-    test_args = [
-        "generate_testdata.py",
-        "--output-dir",
-        str(ci_staging),
-        "--size",
-        "256",
-    ]
-    monkeypatch.setattr(sys, "argv", test_args)
-    gen_main()
-
-    expected_assets = [
-        ci_staging / "input_campaign" / "campaign_summer_lookbook.png",
-        ci_staging / "input_campaign" / "campaign_summer_mask.png",
-        ci_staging / "input_models" / "model_east_asia_f01.png",
-        ci_staging / "input_models" / "model_south_america_m01.png",
-        ci_staging / "input_models" / "model_nordic_f01.png",
-    ]
-    for asset in expected_assets:
-        assert asset.is_file(), f"Expected CI asset missing: {asset}"
-        assert asset.stat().st_size > 0
-        with Image.open(asset) as img:
-            assert img.size == (256, 256), (
-                f"Asset {asset.name} has size {img.size}, expected 256x256"
-            )
-
-
 def test_ci_workflow_yaml_file_integrity() -> None:
     """Verify GitHub Actions CI workflow references existing files and correct python versions."""
     ci_yaml = REPO_ROOT / ".github" / "workflows" / "ci.yml"
@@ -169,16 +137,6 @@ def test_run_all_ci_stages_orchestration(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
     def mock_run_stage(stage_name: str, cmd: list[str], cwd: Path | None = None) -> bool:
         called_stages.append(stage_name)
-        # Create dummy CI temp files when generator stage runs
-        if stage_name == "CI Synthetic Data Generator":
-            staging = tmp_path / "ci_staging"
-            (staging / "input_campaign").mkdir(parents=True, exist_ok=True)
-            (staging / "input_models").mkdir(parents=True, exist_ok=True)
-            (staging / "input_campaign" / "campaign_summer_lookbook.png").write_bytes(b"data")
-            (staging / "input_campaign" / "campaign_summer_mask.png").write_bytes(b"data")
-            (staging / "input_models" / "model_east_asia_f01.png").write_bytes(b"data")
-            (staging / "input_models" / "model_south_america_m01.png").write_bytes(b"data")
-            (staging / "input_models" / "model_nordic_f01.png").write_bytes(b"data")
         return True
 
     monkeypatch.setattr("scripts.run_ci_locally.run_stage", mock_run_stage)
@@ -189,7 +147,6 @@ def test_run_all_ci_stages_orchestration(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert "Ruff Linter" in called_stages
     assert "Ruff Formatter" in called_stages
     assert "Pyright Static Type Checker" in called_stages
-    assert "CI Synthetic Data Generator" in called_stages
     assert "Pytest Regression Suite" in called_stages
 
     # Test with skip flags
@@ -199,7 +156,7 @@ def test_run_all_ci_stages_orchestration(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert "Ruff Linter" not in called_stages
     assert "Pyright Static Type Checker" not in called_stages
     assert "Pytest Regression Suite" not in called_stages
-    assert "CI Synthetic Data Generator" in called_stages
+    assert len(called_stages) == 0
 
 
 def test_run_all_ci_stages_failure_propagation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -235,22 +192,7 @@ def test_run_all_ci_stages_coverage_cleanup(
     xml_file = fake_repo / "coverage.xml"
 
     def mock_runner(stage_name: str, cmd: list[str], cwd: Path | None = None) -> bool:
-        if stage_name == "CI Synthetic Data Generator":
-            staging = tmp_path / "staging"
-            (staging / "input_campaign").mkdir(parents=True, exist_ok=True)
-            (staging / "input_models").mkdir(parents=True, exist_ok=True)
-            for f in [
-                "campaign_summer_lookbook.png",
-                "campaign_summer_mask.png",
-            ]:
-                (staging / "input_campaign" / f).write_bytes(b"data")
-            for f in [
-                "model_east_asia_f01.png",
-                "model_south_america_m01.png",
-                "model_nordic_f01.png",
-            ]:
-                (staging / "input_models" / f).write_bytes(b"data")
-        elif stage_name == "Pytest Regression Suite":
+        if stage_name == "Pytest Regression Suite":
             cov_file.write_bytes(b"coverage_data")
             xml_file.write_bytes(b"<coverage/>")
         return True
@@ -306,7 +248,6 @@ def test_python_310_compatibility() -> None:
 def test_backward_compatibility_shims() -> None:
     """Verify that all scripts/ shims export expected symbols and forward to batchpersona."""
     import scripts.batch_swapper as shim_swapper
-    import scripts.generate_testdata as shim_generator
     import scripts.housekeeper as shim_housekeeper
     import scripts.launch_comfyui as shim_launcher
     import scripts.package_release as shim_package
@@ -328,33 +269,10 @@ def test_backward_compatibility_shims() -> None:
     assert hasattr(shim_swapper, "SwapperConfig")
     assert hasattr(shim_swapper, "JobStatus")
     assert hasattr(shim_housekeeper, "ComfyUIHousekeeper")
-    assert hasattr(shim_generator, "generate_all_testdata")
-    assert hasattr(shim_generator, "FeatureStyle")
     assert hasattr(shim_preprocess, "process_dataset")
     assert hasattr(shim_ci, "run_all_ci_stages")
     assert hasattr(shim_package, "build_release_package")
     assert hasattr(shim_package, "main")
-
-
-def test_run_all_ci_stages_staging_missing_asset(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Verify run_all_ci_stages returns 1 when an expected asset is missing."""
-    staging = tmp_path / "ci_staging"
-    staging.mkdir()
-    # Missing all lookbook assets
-
-    def mock_run_stage(stage_name: str, cmd: list[str], cwd: Path | None = None) -> bool:
-        return True
-
-    code = run_all_ci_stages(
-        python_executable="python",
-        skip_lint=True,
-        skip_tests=True,
-        run_stage_fn=mock_run_stage,
-        staging_dir=staging,
-    )
-    assert code == 1
 
 
 def test_ci_main_direct(monkeypatch: pytest.MonkeyPatch) -> None:

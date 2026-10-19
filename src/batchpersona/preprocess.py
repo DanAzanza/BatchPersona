@@ -74,37 +74,19 @@ def resize_and_save(src_path: Path, dst_path: Path) -> None:
         )
 
 
-# Declarative preset matching for known showcase lookbooks and models
-SHOWCASE_CAMPAIGN_PRESETS: Final[tuple[tuple[str, str], ...]] = (
-    ("campaign_editorial_female", "campaign_fashion_female.png"),
-    ("campaign_editorial_male", "campaign_fashion_male.png"),
-    ("campaign_urban_female", "campaign_fashion_urban_female.png"),
-    ("campaign_arch_male", "campaign_fashion_arch_male.png"),
-    ("campaign_resort_female", "campaign_fashion_resort_female.png"),
-    ("campaign_street_male", "campaign_fashion_street_male.png"),
-)
-
-SHOWCASE_MODEL_PRESETS: Final[tuple[tuple[str, str], ...]] = (
-    ("model_east_asia_f", "model_east_asia_f01.png"),
-    ("model_west_africa_m", "model_west_africa_m01.png"),
-    ("model_nordic_f", "model_nordic_f01.png"),
-    ("model_south_america_m", "model_south_america_m01.png"),
-)
-
-
 def process_dataset(
     artifacts_dir: Path,
     workspace_data_dir: Path,
     campaign_src: Path | None = None,
     models_src: Path | None = None,
 ) -> int:
-    """Ingest artifact images and build the standardized full-body dataset.
+    """Ingest image assets and build standardized 896x1152 full-body dataset.
 
     Supports:
     1. Explicit sources via `campaign_src` (file or dir) and/or `models_src` (dir or file).
-    2. Declarative showcase presets matching for known sample lookbooks and models.
-    3. Generic mode on `artifacts_dir` (or subdirectories `input_campaign` / `input_models`):
-       - Files starting with `campaign_` -> `workspace_data_dir / input_campaign / {stem}.png`
+    2. Structured subdirectory mode (`artifacts_dir / input_campaign` and `artifacts_dir / input_models`).
+    3. Flat directory scan on `artifacts_dir`:
+       - Files starting with `campaign_` or `lookbook_` -> `workspace_data_dir / input_campaign / {stem}.png`
        - All other valid image files -> `workspace_data_dir / input_models / {stem}.png`
     """
     campaign_dir = workspace_data_dir / "input_campaign"
@@ -133,73 +115,39 @@ def process_dataset(
         )
         return processed_count
 
-    # 2. Directory scan mode
     if not artifacts_dir.is_dir():
         LOGGER.warning("Artifacts directory does not exist: %s", artifacts_dir)
         return 0
 
-    artifact_files = sorted(
-        [
-            f
-            for f in artifacts_dir.iterdir()
-            if f.is_file() and f.suffix.lower() in VALID_IMAGE_EXTENSIONS
-        ]
-    )
-
+    # 2. Check for structured subdirectories input_campaign and input_models
+    sub_campaign = artifacts_dir / "input_campaign"
+    sub_models = artifacts_dir / "input_models"
     handled_files: set[Path] = set()
 
-    # Match known showcase presets if present
-    for src_sub, target_name in SHOWCASE_CAMPAIGN_PRESETS:
-        for f in artifact_files:
-            if f not in handled_files and src_sub in f.name.lower():
-                resize_and_save(f, campaign_dir / target_name)
+    if sub_campaign.is_dir() and sub_campaign.resolve() != campaign_dir.resolve():
+        for f in sorted(sub_campaign.iterdir()):
+            if f.is_file() and f.suffix.lower() in VALID_IMAGE_EXTENSIONS:
+                resize_and_save(f, campaign_dir / f"{f.stem}.png")
                 handled_files.add(f)
                 processed_count += 1
-                break
 
-    for src_sub, target_name in SHOWCASE_MODEL_PRESETS:
-        for f in artifact_files:
-            if f not in handled_files and src_sub in f.name.lower():
-                resize_and_save(f, models_dir / target_name)
+    if sub_models.is_dir() and sub_models.resolve() != models_dir.resolve():
+        for f in sorted(sub_models.iterdir()):
+            if f.is_file() and f.suffix.lower() in VALID_IMAGE_EXTENSIONS:
+                resize_and_save(f, models_dir / f"{f.stem}.png")
                 handled_files.add(f)
                 processed_count += 1
-                break
 
-    # Generic Directory Mode for files in artifacts_dir not matched by legacy mapping
-    for f in artifact_files:
-        if f in handled_files:
+    # 3. Flat directory scan for any images in artifacts_dir root
+    for f in sorted(artifacts_dir.iterdir()):
+        if not f.is_file() or f.suffix.lower() not in VALID_IMAGE_EXTENSIONS or f in handled_files:
             continue
-        if f.name.lower().startswith("campaign_"):
+        if f.name.lower().startswith(("campaign_", "lookbook_")):
             resize_and_save(f, campaign_dir / f"{f.stem}.png")
         else:
             resize_and_save(f, models_dir / f"{f.stem}.png")
         handled_files.add(f)
         processed_count += 1
-
-    # Generic Directory Mode for subdirectories input_campaign and input_models
-    sub_campaign = artifacts_dir / "input_campaign"
-    if sub_campaign.is_dir() and sub_campaign.resolve() != campaign_dir.resolve():
-        for f in sorted(sub_campaign.iterdir()):
-            if (
-                f.is_file()
-                and f.suffix.lower() in VALID_IMAGE_EXTENSIONS
-                and f not in handled_files
-            ):
-                resize_and_save(f, campaign_dir / f"{f.stem}.png")
-                handled_files.add(f)
-                processed_count += 1
-
-    sub_models = artifacts_dir / "input_models"
-    if sub_models.is_dir() and sub_models.resolve() != models_dir.resolve():
-        for f in sorted(sub_models.iterdir()):
-            if (
-                f.is_file()
-                and f.suffix.lower() in VALID_IMAGE_EXTENSIONS
-                and f not in handled_files
-            ):
-                resize_and_save(f, models_dir / f"{f.stem}.png")
-                handled_files.add(f)
-                processed_count += 1
 
     LOGGER.info(
         "Processed %d standardized full-body assets into %s",

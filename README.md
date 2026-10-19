@@ -161,7 +161,6 @@ BatchPersona/
 │   ├── __main__.py              # CLI module entrypoint (python -m batchpersona)
 │   ├── ci.py                    # CI test orchestration and parity checks
 │   ├── client.py                # ComfyUI REST & WebSocket state machine client (HTTP/HTTPS, WS/WSS)
-│   ├── generator.py             # Pure-Python synthetic image asset synthesizer
 │   ├── housekeeper.py           # Storage de-duplication & intermediate asset cleanup
 │   ├── launcher.py              # Automated server detection, launch & shutdown
 │   ├── metadata.py              # EU AI Act Article 50 provenance metadata & zero-recompression chunk processor
@@ -173,26 +172,25 @@ BatchPersona/
 │   └── template.py              # Workflow graph loading, mutation & node validation
 ├── scripts/                     # 🔌 Backward-compatible CLI shims
 │   ├── batch_swapper.py         # Forwarding shim -> batchpersona.orchestrator
-│   ├── generate_testdata.py     # Forwarding shim -> batchpersona.generator
 │   ├── housekeeper.py           # Forwarding shim -> batchpersona.housekeeper
 │   ├── launch_comfyui.py        # Forwarding shim -> batchpersona.launcher
 │   ├── package_release.py       # Forwarding shim -> batchpersona.packaging
 │   ├── prepare_fullbody_dataset.py # Forwarding shim -> batchpersona.preprocess
 │   ├── run_ci_locally.py        # Forwarding shim -> batchpersona.ci
 │   └── run_pipeline.py          # Forwarding shim -> batchpersona.pipeline
-├── tests/                       # 🧪 Automated test suites (190 tests, 91% branch coverage)
+├── tests/                       # 🧪 Automated test suites
 │   ├── conftest.py              # Shared test fixtures and ComfyUI client mocks
 │   ├── test_cache.py            # Cache invalidation & skip-existing tests
 │   ├── test_ci_parity.py        # CI parity, AST compatibility & packaging checks
 │   ├── test_cli.py              # CLI argument parsing, flags & exit code tests
 │   ├── test_client.py           # HTTP multipart, WebSocket framing, TLS & metadata tests
-│   ├── test_generator.py        # Synthetic image synthesis test fixtures
 │   ├── test_housekeeper.py      # Storage housekeeping & safety guard tests
 │   ├── test_launch_comfyui.py   # Server launcher & headless detection tests
 │   ├── test_metadata.py         # EU AI Act Article 50 & zero-recompression chunk tests
 │   ├── test_models.py           # SwapperConfig validation & market localization tests
 │   ├── test_orchestrator.py     # Batch swapper, skip-existing & execution tests
 │   ├── test_packaging.py        # Standalone archive & file integrity tests
+│   ├── test_preprocess.py       # Centering-aware dataset preprocessor test fixtures
 │   ├── test_run_pipeline.py     # Interactive runner orchestration & menu tests
 │   ├── test_server_lifecycle.py # Server supervision, PID management & termination tests
 │   └── test_template.py         # Workflow template validation & node patching tests
@@ -260,15 +258,7 @@ Or pass arguments directly through the runner from your terminal:
 run_pipeline.bat --campaign data\input_campaign\campaign_fashion_female.png --models-dir data\input_models
 ```
 
-### 3. Generating Synthetic Datasets (Zero Downloads)
-
-For automated CI environments or local testing without external image downloads, generate procedural synthetic lookbooks and multi-ethnic portraits:
-
-```bash
-python scripts/generate_testdata.py --output-dir data --size 1024
-```
-
-### 4. Preprocessing Full-Body High-Fidelity Lookbooks
+### 3. Preprocessing Full-Body High-Fidelity Lookbooks
 
 To standardize high-resolution campaign assets to the canonical 3:4 diffusion aspect ratio (`896x1152`) without squashing or cutting off heads:
 
@@ -349,9 +339,8 @@ This sequentially runs:
 1. `ruff check .` (PEP compliance static linting)
 2. `ruff format --check .` (Code style formatting verification)
 3. `pyright src scripts tests` (Static type analysis across src, scripts, tests)
-4. `python -m batchpersona.generator --output-dir .ci_local_staging --size 256` (Synthetic data CI smoke test)
-5. `pytest tests --cov=batchpersona --cov=scripts --cov-report=term-missing -v` (Full unit & integration regression suite)
-6. Automatic cleanup of all staging artifacts
+4. `pytest tests --cov=batchpersona --cov=scripts --cov-report=term-missing -v` (Full unit & integration regression suite)
+5. Automatic cleanup of test artifacts
 
 ### Linting & Static Typing Quality Gate
 

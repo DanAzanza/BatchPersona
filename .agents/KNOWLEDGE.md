@@ -76,7 +76,7 @@
   - `tests/test_cache.py` - Incremental `--skip-existing` caching, force overrides, and corrupt output handling.
   - `tests/test_cli.py` - Command-line parsing, environment overrides, progress bar, and summary reporting.
   - `tests/test_metadata.py` - PNG chunk inspection and provenance metadata processing.
-  - `tests/test_generator.py` - Synthetic PIL image fixtures and dataset preprocessing.
+  - `tests/test_preprocess.py` - Centering-aware dataset preprocessing and standardization test fixtures.
   - `tests/test_housekeeper.py` - Sandboxed input/output asset cleanup and path traversal prevention.
   - `tests/test_launch_comfyui.py` - Headless server instance detection and command synthesis.
   - `tests/test_server_lifecycle.py` - Server process supervision, PID management, and safe termination.
@@ -87,7 +87,6 @@
 - Deterministic release archive packaging: `python scripts/package_release.py --version <X.Y.Z>` (CLI: `batchpersona-package`)
 - Code formatting & linting: `python -m ruff check .` and `python -m ruff format --check .`
 - Static type checking: `python -m pyright src scripts tests`
-- Procedural synthetic test data generation: `python scripts/generate_testdata.py` (CLI: `batchpersona-testdata`)
 - Full-body aspect-ratio preserving dataset standardization: `python scripts/prepare_fullbody_dataset.py` (CLI: `batchpersona-prep`)
 - Windows 1-Click Interactive Batch Runner: `run_pipeline.bat`
 - Live batch execution on local ComfyUI instance:
@@ -103,7 +102,7 @@
 - `[launcher]` - Server lifecycle, detection, and termination in `src/batchpersona/launcher.py`
 - `[housekeeper]` - Workspace and server asset purging in `src/batchpersona/housekeeper.py`
 - `[ci]` - Continuous integration, configs, and verification scripts in `src/batchpersona/ci.py`, `scripts/run_ci_locally.py`, `.github/`, and root configs (`pyproject.toml`)
-- `[data]` - Test data generation and dataset preprocessing in `src/batchpersona/` (`generator.py`, `preprocess.py`) & `scripts/`
+- `[data]` - Dataset preprocessing in `src/batchpersona/preprocess.py` & `scripts/prepare_fullbody_dataset.py`
 - `[workflow]` - ComfyUI API graph templates in `workflows/`
 - `[test]` - Test fixtures and mock integration tests in `tests/`
 - `[docs]` - Architecture documentation and repository README

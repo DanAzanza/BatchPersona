@@ -18,7 +18,6 @@ if sys.platform == "win32":
         reconfig_stderr(encoding="utf-8")
 
 from batchpersona.ci import run_all_ci_stages
-from batchpersona.generator import generate_all_testdata
 from batchpersona.launcher import (
     detect_comfyui,
     is_server_online,
@@ -138,12 +137,9 @@ def run_quick_dry_run(
     test_models = synthetic_dir / "input_models"
     test_output = synthetic_dir / "output"
 
-    if not test_lookbook.exists():
-        print("[INFO] Generating isolated synthetic test dataset for dry-run...")
-        generated = generate_all_testdata(output_root=synthetic_dir, size=896)
-        if not generated:
-            print("[ERROR] Failed to generate synthetic test dataset.")
-            return 1
+    if not test_lookbook.is_file() or not test_models.is_dir():
+        print(f"[ERROR] Required synthetic test assets not found in {synthetic_dir}.")
+        return 1
 
     config = SwapperConfig(
         server_address=server,

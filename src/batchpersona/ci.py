@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
-import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -57,8 +56,8 @@ def run_all_ci_stages(
     staging_dir: Path | None = None,
 ) -> int:
     """Run all CI pipeline stages in sequence with deterministic cleanup."""
+    _ = staging_dir
     stage_runner = run_stage_fn or run_stage
-    temp_dir = staging_dir or CI_TEMP_DIR
 
     # Stage 1: Ruff Linting
     if not skip_lint:
@@ -76,38 +75,7 @@ def run_all_ci_stages(
         if not stage_runner("Pyright Static Type Checker", type_cmd):
             return 1
 
-    # Stage 4: CI Synthetic Test Data Generation Smoke Test
-    ci_gen_cmd = [
-        python_executable,
-        "-m",
-        "batchpersona.generator",
-        "--output-dir",
-        str(temp_dir),
-        "--size",
-        "256",
-    ]
-    try:
-        if not stage_runner("CI Synthetic Data Generator", ci_gen_cmd):
-            return 1
-
-        # Verify expected smoke test outputs exist
-        expected_files = [
-            temp_dir / "input_campaign" / "campaign_summer_lookbook.png",
-            temp_dir / "input_campaign" / "campaign_summer_mask.png",
-            temp_dir / "input_models" / "model_east_asia_f01.png",
-            temp_dir / "input_models" / "model_south_america_m01.png",
-            temp_dir / "input_models" / "model_nordic_f01.png",
-        ]
-        for f in expected_files:
-            if not f.is_file():
-                LOGGER.error("Missing expected CI generated asset: %s", f)
-                return 1
-    finally:
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            LOGGER.debug("Cleaned up staging directory: %s", temp_dir)
-
-    # Stage 5: Pytest Suite with Coverage
+    # Stage 4: Pytest Suite with Coverage
     if not skip_tests:
         test_cmd = [
             python_executable,

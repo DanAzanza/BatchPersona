@@ -57,15 +57,12 @@ if %ERRORLEVEL% EQU 0 (
     echo [OK] Dependencies installed successfully.
 )
 
-:: 4. Generate initial synthetic test datasets if missing
+:: 4. Verify input dataset directories
 echo.
-if not exist "data\input_campaign\campaign_fashion_female.png" (
-    echo [INFO] Generating initial synthetic lookbooks and model portraits...
-    %VENV_PYTHON% scripts\generate_testdata.py --output-dir data --size 1024
-    echo [OK] Synthetic datasets generated in data\
-) else (
-    echo [OK] Campaign datasets already present in data\
-)
+if not exist "data\input_campaign" mkdir "data\input_campaign"
+if not exist "data\input_models" mkdir "data\input_models"
+if not exist "data\output" mkdir "data\output"
+echo [OK] Workspace data directories verified in data\
 
 :: 5. Run automated self-test verification suite
 echo.

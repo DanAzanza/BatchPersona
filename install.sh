@@ -49,15 +49,10 @@ else
     echo "[OK] Dependencies installed successfully."
 fi
 
-# 4. Generate initial synthetic test data if missing
+# 4. Verify input dataset directories
 echo ""
-if [ ! -f "data/input_campaign/campaign_fashion_female.png" ]; then
-    echo "[INFO] Generating initial synthetic lookbooks and model portraits..."
-    $VENV_PYTHON scripts/generate_testdata.py --output-dir data --size 1024
-    echo "[OK] Synthetic datasets generated in data/"
-else
-    echo "[OK] Campaign datasets already present in data/"
-fi
+mkdir -p data/input_campaign data/input_models data/output
+echo "[OK] Workspace data directories verified in data/"
 
 # 5. Run automated self-test verification suite
 echo ""

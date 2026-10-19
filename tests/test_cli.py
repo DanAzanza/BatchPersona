@@ -20,7 +20,6 @@ from batchpersona.models import (
 from batchpersona.orchestrator import BatchSwapper, parse_cli_args
 from scripts.batch_swapper import configure_logging
 from scripts.batch_swapper import main as batch_main
-from scripts.generate_testdata import main as gen_main
 from scripts.prepare_fullbody_dataset import main as prep_main
 from scripts.prepare_fullbody_dataset import parse_cli_args as prep_parse_cli_args
 
@@ -151,18 +150,6 @@ def test_batch_swapper_main_zero_models(tmp_path: Path, monkeypatch: pytest.Monk
     with pytest.raises(SystemExit) as exc_info:
         batch_main()
     assert exc_info.value.code == 2
-
-
-def test_generate_testdata_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verify scripts.generate_testdata main entrypoint runs smoothly."""
-    out_dir = tmp_path / "test_data"
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["generate_testdata.py", "--output-dir", str(out_dir), "--size", "64"],
-    )
-    gen_main()
-    assert (out_dir / "input_campaign" / "campaign_summer_lookbook.png").is_file()
 
 
 def test_prepare_fullbody_dataset_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
