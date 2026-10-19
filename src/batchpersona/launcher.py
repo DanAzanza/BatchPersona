@@ -22,10 +22,16 @@ LOGGER = logging.getLogger("batchpersona.launcher")
 
 PID_FILE_NAME = ".comfyui_server.pid"
 _ACTIVE_SERVER_PROCESS: subprocess.Popen[Any] | None = None
+REPO_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 
 
 def get_pid_file_path() -> Path:
     """Return path to persistent ComfyUI server PID tracking file."""
+    try:
+        if REPO_ROOT.is_dir() and os.access(REPO_ROOT, os.W_OK):
+            return REPO_ROOT / PID_FILE_NAME
+    except OSError:
+        pass
     return Path.cwd() / PID_FILE_NAME
 
 

@@ -105,7 +105,7 @@ def test_metadata_save_failure_cleans_up_tmp(tmp_path: Path) -> None:
     sample_png = tmp_path / "image_fail.png"
     _create_sample_png(sample_png)
 
-    with patch.object(Image.Image, "save", side_effect=OSError("Disk write error")):
+    with patch.object(Path, "replace", side_effect=OSError("Disk write error")):
         success = process_png_provenance_metadata(sample_png)
         assert success is False
 

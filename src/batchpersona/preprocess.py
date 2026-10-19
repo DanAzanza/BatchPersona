@@ -74,6 +74,24 @@ def resize_and_save(src_path: Path, dst_path: Path) -> None:
         )
 
 
+# Declarative preset matching for known showcase lookbooks and models
+SHOWCASE_CAMPAIGN_PRESETS: Final[tuple[tuple[str, str], ...]] = (
+    ("campaign_editorial_female", "campaign_fashion_female.png"),
+    ("campaign_editorial_male", "campaign_fashion_male.png"),
+    ("campaign_urban_female", "campaign_fashion_urban_female.png"),
+    ("campaign_arch_male", "campaign_fashion_arch_male.png"),
+    ("campaign_resort_female", "campaign_fashion_resort_female.png"),
+    ("campaign_street_male", "campaign_fashion_street_male.png"),
+)
+
+SHOWCASE_MODEL_PRESETS: Final[tuple[tuple[str, str], ...]] = (
+    ("model_east_asia_f", "model_east_asia_f01.png"),
+    ("model_west_africa_m", "model_west_africa_m01.png"),
+    ("model_nordic_f", "model_nordic_f01.png"),
+    ("model_south_america_m", "model_south_america_m01.png"),
+)
+
+
 def process_dataset(
     artifacts_dir: Path,
     workspace_data_dir: Path,
@@ -84,7 +102,7 @@ def process_dataset(
 
     Supports:
     1. Explicit sources via `campaign_src` (file or dir) and/or `models_src` (dir or file).
-    2. Legacy artifact filename matching if specific legacy substrings exist in `artifacts_dir`.
+    2. Declarative showcase presets matching for known sample lookbooks and models.
     3. Generic mode on `artifacts_dir` (or subdirectories `input_campaign` / `input_models`):
        - Files starting with `campaign_` -> `workspace_data_dir / input_campaign / {stem}.png`
        - All other valid image files -> `workspace_data_dir / input_models / {stem}.png`
@@ -128,61 +146,24 @@ def process_dataset(
         ]
     )
 
-    name_map: dict[str, Path] = {}
-    for f in artifact_files:
-        fname = f.name.lower()
-        if "campaign_editorial_female" in fname:
-            name_map["campaign_female"] = f
-        elif "campaign_editorial_male" in fname:
-            name_map["campaign_male"] = f
-        elif "campaign_urban_female" in fname:
-            name_map["campaign_urban_female"] = f
-        elif "campaign_arch_male" in fname:
-            name_map["campaign_arch_male"] = f
-        elif "campaign_resort_female" in fname:
-            name_map["campaign_resort_female"] = f
-        elif "campaign_street_male" in fname:
-            name_map["campaign_street_male"] = f
-        elif "model_east_asia_f" in fname:
-            name_map["model_east_asia_f01"] = f
-        elif "model_west_africa_m" in fname:
-            name_map["model_west_africa_m01"] = f
-        elif "model_nordic_f" in fname:
-            name_map["model_nordic_f01"] = f
-        elif "model_south_america_m" in fname:
-            name_map["model_south_america_m01"] = f
-
-    LOGGER.info("Matched %d source images in %s", len(name_map), artifacts_dir)
-
     handled_files: set[Path] = set()
 
-    campaign_mapping = [
-        ("campaign_female", campaign_dir / "campaign_fashion_female.png"),
-        ("campaign_male", campaign_dir / "campaign_fashion_male.png"),
-        ("campaign_urban_female", campaign_dir / "campaign_fashion_urban_female.png"),
-        ("campaign_arch_male", campaign_dir / "campaign_fashion_arch_male.png"),
-        ("campaign_resort_female", campaign_dir / "campaign_fashion_resort_female.png"),
-        ("campaign_street_male", campaign_dir / "campaign_fashion_street_male.png"),
-    ]
-    for key, img_dst in campaign_mapping:
-        if key in name_map:
-            src_f = name_map[key]
-            resize_and_save(src_f, img_dst)
-            handled_files.add(src_f)
-            processed_count += 1
+    # Match known showcase presets if present
+    for src_sub, target_name in SHOWCASE_CAMPAIGN_PRESETS:
+        for f in artifact_files:
+            if f not in handled_files and src_sub in f.name.lower():
+                resize_and_save(f, campaign_dir / target_name)
+                handled_files.add(f)
+                processed_count += 1
+                break
 
-    model_mapping = [
-        ("model_east_asia_f01", models_dir / "model_east_asia_f01.png"),
-        ("model_west_africa_m01", models_dir / "model_west_africa_m01.png"),
-        ("model_nordic_f01", models_dir / "model_nordic_f01.png"),
-        ("model_south_america_m01", models_dir / "model_south_america_m01.png"),
-    ]
-    for key, dst in model_mapping:
-        if key in name_map:
-            src_f = name_map[key]
-            resize_and_save(src_f, dst)
-            handled_files.add(src_f)
-            processed_count += 1
+    for src_sub, target_name in SHOWCASE_MODEL_PRESETS:
+        for f in artifact_files:
+            if f not in handled_files and src_sub in f.name.lower():
+                resize_and_save(f, models_dir / target_name)
+                handled_files.add(f)
+                processed_count += 1
+                break
 
     # Generic Directory Mode for files in artifacts_dir not matched by legacy mapping
     for f in artifact_files:

@@ -576,3 +576,30 @@ def test_package_exports_default_server_address() -> None:
     assert hasattr(batchpersona, "DEFAULT_SERVER_ADDRESS")
     assert "DEFAULT_SERVER_ADDRESS" in batchpersona.__all__
     assert batchpersona.DEFAULT_SERVER_ADDRESS == "127.0.0.1:8000"
+
+
+def test_client_tls_and_wss_support() -> None:
+    """Verify ComfyUIClient correctly configures HTTPS and WSS for secure servers."""
+    # 1. Plain loopback / HTTP
+    client_plain = ComfyUIClient("127.0.0.1:8000")
+    assert client_plain.is_tls is False
+    assert client_plain.http_base == "http://127.0.0.1:8000"
+    assert client_plain.ws_base == "ws://127.0.0.1:8000"
+
+    # 2. HTTPS scheme provided
+    client_https = ComfyUIClient("https://remote-comfyui.cloud:8443")
+    assert client_https.is_tls is True
+    assert client_https.http_base == "https://remote-comfyui.cloud:8443"
+    assert client_https.ws_base == "wss://remote-comfyui.cloud:8443"
+
+    # 3. WSS scheme provided
+    client_wss = ComfyUIClient("wss://secure-host.internal")
+    assert client_wss.is_tls is True
+    assert client_wss.http_base == "https://secure-host.internal"
+    assert client_wss.ws_base == "wss://secure-host.internal"
+
+    # 4. Standard port 443 provided
+    client_443 = ComfyUIClient("comfy.mycorp.com:443")
+    assert client_443.is_tls is True
+    assert client_443.http_base == "https://comfy.mycorp.com:443"
+    assert client_443.ws_base == "wss://comfy.mycorp.com:443"

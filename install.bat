@@ -45,10 +45,11 @@ echo.
 if %ERRORLEVEL% EQU 0 (
     echo [OK] All required Python dependencies are already installed.
 ) else (
-    echo [INFO] Installing production dependencies from requirements.txt...
+    echo [INFO] Installing production dependencies and development extras...
     %VENV_PYTHON% -m pip install -r requirements.txt
+    %VENV_PYTHON% -m pip install -e ".[dev]"
     if !ERRORLEVEL! NEQ 0 (
-        echo [ERROR] Failed to install dependencies from requirements.txt.
+        echo [ERROR] Failed to install dependencies.
         echo Please check your internet connection and try again.
         pause
         exit /b 1

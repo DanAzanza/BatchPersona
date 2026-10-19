@@ -316,7 +316,7 @@ The following benchmarks represent empirical workstation reference measurements 
 
 | Quality Dimension | Metric | Tooling & Enforcement |
 | :--- | :--- | :--- |
-| **Automated Test Suite** | **175 passing tests** | `pytest` 9.1+ |
+| **Automated Test Suite** | **190 passing tests** | `pytest` 9.1+ |
 | **Branch Coverage** | **91.1%** (mandatory $\ge 90\%$) | `pytest-cov` with branch analysis |
 | **Static Type Verification** | **0 errors, 0 warnings** | Microsoft Pyright 1.1+ (`src`, `scripts`, `tests`) |
 | **Linting & Code Style** | **0 diagnostics** | Astral Ruff (PEP 8, Flake8, Bugbear) |

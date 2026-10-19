@@ -8,7 +8,7 @@
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%2F%20WebSocket-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Architecture: DiT](https://img.shields.io/badge/Diffusion-Qwen%20Image%202.1%20DiT-purple.svg)](docs/ARCHITECTURE.md)
 [![Coverage: 91% Branch](https://img.shields.io/badge/test%20coverage-91%25%20branch-brightgreen.svg)](tests/)
-[![Tests: 175 Passed](https://img.shields.io/badge/tests-175%20passed-success.svg)](tests/)
+[![Tests: 190 Passed](https://img.shields.io/badge/tests-190%20passed-success.svg)](tests/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -160,12 +160,14 @@ BatchPersona/
 │   ├── __init__.py              # Unified library exports & metadata
 │   ├── __main__.py              # CLI module entrypoint (python -m batchpersona)
 │   ├── ci.py                    # CI test orchestration and parity checks
-│   ├── client.py                # ComfyUI REST & WebSocket state machine client
+│   ├── client.py                # ComfyUI REST & WebSocket state machine client (HTTP/HTTPS, WS/WSS)
 │   ├── generator.py             # Pure-Python synthetic image asset synthesizer
 │   ├── housekeeper.py           # Storage de-duplication & intermediate asset cleanup
 │   ├── launcher.py              # Automated server detection, launch & shutdown
+│   ├── metadata.py              # EU AI Act Article 50 provenance metadata & zero-recompression chunk processor
 │   ├── models.py                # Strongly typed domain dataclasses & exceptions
 │   ├── orchestrator.py          # Batch model swapping pipeline engine
+│   ├── packaging.py             # Deterministic distribution archive builder
 │   ├── pipeline.py              # Interactive management console & CLI runner
 │   ├── preprocess.py            # Centering-aware dataset preprocessor (ImageOps.fit)
 │   └── template.py              # Workflow graph loading, mutation & node validation
@@ -174,20 +176,25 @@ BatchPersona/
 │   ├── generate_testdata.py     # Forwarding shim -> batchpersona.generator
 │   ├── housekeeper.py           # Forwarding shim -> batchpersona.housekeeper
 │   ├── launch_comfyui.py        # Forwarding shim -> batchpersona.launcher
+│   ├── package_release.py       # Forwarding shim -> batchpersona.packaging
 │   ├── prepare_fullbody_dataset.py # Forwarding shim -> batchpersona.preprocess
 │   ├── run_ci_locally.py        # Forwarding shim -> batchpersona.ci
 │   └── run_pipeline.py          # Forwarding shim -> batchpersona.pipeline
-├── tests/                       # 🧪 Automated test suites (171 tests, 91% branch coverage)
+├── tests/                       # 🧪 Automated test suites (190 tests, 91% branch coverage)
 │   ├── conftest.py              # Shared test fixtures and ComfyUI client mocks
+│   ├── test_cache.py            # Cache invalidation & skip-existing tests
 │   ├── test_ci_parity.py        # CI parity, AST compatibility & packaging checks
 │   ├── test_cli.py              # CLI argument parsing, flags & exit code tests
-│   ├── test_client.py           # HTTP multipart, WebSocket framing & metadata tests
+│   ├── test_client.py           # HTTP multipart, WebSocket framing, TLS & metadata tests
 │   ├── test_generator.py        # Synthetic image synthesis test fixtures
 │   ├── test_housekeeper.py      # Storage housekeeping & safety guard tests
-│   ├── test_launch_comfyui.py   # Server launcher, PID tracking & shutdown tests
-│   ├── test_metadata.py         # EU AI Act Article 50 & workflow stripping tests
+│   ├── test_launch_comfyui.py   # Server launcher & headless detection tests
+│   ├── test_metadata.py         # EU AI Act Article 50 & zero-recompression chunk tests
+│   ├── test_models.py           # SwapperConfig validation & market localization tests
 │   ├── test_orchestrator.py     # Batch swapper, skip-existing & execution tests
+│   ├── test_packaging.py        # Standalone archive & file integrity tests
 │   ├── test_run_pipeline.py     # Interactive runner orchestration & menu tests
+│   ├── test_server_lifecycle.py # Server supervision, PID management & termination tests
 │   └── test_template.py         # Workflow template validation & node patching tests
 ├── install.bat                  # ⚡ Windows 1-Click Environment Setup & Self-Test
 ├── install.sh                   # ⚡ Linux/macOS 1-Click Environment Setup & Self-Test
@@ -195,7 +202,7 @@ BatchPersona/
 ├── run_pipeline.sh              # 🚀 Linux/macOS Interactive Management & Batch Runner
 ├── .env.example                 # Configuration template (COMFYUI_SERVER, timeout)
 ├── pyproject.toml               # Modern packaging, CLI scripts, pytest, ruff & pyright
-├── requirements.txt             # Minimal, locked production dependencies
+├── requirements.txt             # Minimal production dependencies
 ├── .gitignore                   # Caches, virtual environments, and temporary artifacts
 ├── LICENSE                      # MIT License
 └── README.md
@@ -322,7 +329,7 @@ batchpersona --campaign data/input_campaign/campaign_fashion_female.png --models
 
 ## 🧪 Verification & Test Suite
 
-The automated test suite provides **91% branch coverage (171 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
+The automated test suite provides **91% branch coverage (190 passing tests)** without requiring an active GPU or live ComfyUI instance by leveraging mocked WebSocket frame streams, mock REST sessions, and procedural image fixtures.
 
 Run the complete test suite with coverage report:
 

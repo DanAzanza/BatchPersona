@@ -43,8 +43,9 @@ echo ""
 if $VENV_PYTHON -c "import requests, websocket, PIL, numpy, pytest" >/dev/null 2>&1; then
     echo "[OK] All required Python dependencies are already installed."
 else
-    echo "[INFO] Installing production dependencies from requirements.txt..."
+    echo "[INFO] Installing production dependencies and development extras..."
     $VENV_PYTHON -m pip install -r requirements.txt
+    $VENV_PYTHON -m pip install -e ".[dev]"
     echo "[OK] Dependencies installed successfully."
 fi
 

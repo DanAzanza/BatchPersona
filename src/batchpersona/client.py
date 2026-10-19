@@ -37,9 +37,15 @@ class ComfyUIClient:
         session: requests.Session | None = None,
         ws_factory: Callable[[str, float], Any] | None = None,
     ) -> None:
+        raw_address = server_address.strip()
+        self._is_tls = raw_address.lower().startswith(
+            ("https://", "wss://")
+        ) or raw_address.endswith(":443")
         self._server = normalize_server_address(server_address)
-        self._http_base = f"http://{self._server}"
-        self._ws_base = f"ws://{self._server}"
+        http_scheme = "https" if self._is_tls else "http"
+        ws_scheme = "wss" if self._is_tls else "ws"
+        self._http_base = f"{http_scheme}://{self._server}"
+        self._ws_base = f"{ws_scheme}://{self._server}"
         self._session = session or requests.Session()
         self._ws_factory = ws_factory or self._default_ws_connect
 
@@ -48,9 +54,19 @@ class ComfyUIClient:
         return websocket.create_connection(url, timeout=timeout)
 
     @property
+    def is_tls(self) -> bool:
+        """Return True if connection uses TLS (HTTPS and WSS)."""
+        return self._is_tls
+
+    @property
     def http_base(self) -> str:
         """Return base HTTP URL of ComfyUI server."""
         return self._http_base
+
+    @property
+    def ws_base(self) -> str:
+        """Return base WebSocket URL of ComfyUI server."""
+        return self._ws_base
 
     @property
     def server_address(self) -> str:
