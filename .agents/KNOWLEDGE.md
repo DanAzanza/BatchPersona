@@ -102,6 +102,31 @@
   batchpersona --server 127.0.0.1:8000 --campaign data/input_campaign/campaign_fashion_female.png --models-dir data/input_models/ --output-dir data/output/
   ```
 
+## Versioning & GitHub Release Protocol
+- **Three-Way Version Alignment**:
+  - The project version is defined in exactly two source files:
+    1. `pyproject.toml` (`[project] version = "X.Y.Z"`)
+    2. `src/batchpersona/__init__.py` (`__version__ = "X.Y.Z"`)
+  - The Git tag MUST follow SemVer with a `v`-prefix: `vX.Y.Z` (e.g. `v1.0.1`).
+  - `.github/workflows/release.yml` enforces a strict pre-flight check: if `tag.lstrip('v') != pyproject.toml != __version__`, the workflow fails fast before building.
+- **Branch Ancestry Guard**:
+  - Releases are only permitted from commits reachable from `origin/main` (`git merge-base --is-ancestor HEAD origin/main`). Pushing tags from detached heads or unmerged feature branches will fail.
+- **Standard Release Procedure**:
+  1. Bump version in `pyproject.toml` and `src/batchpersona/__init__.py`.
+  2. Run local verification gate: `python scripts/run_ci_locally.py`.
+  3. Commit and push:
+     ```bash
+     git add pyproject.toml src/batchpersona/__init__.py
+     git commit -m "[ci] Bump version to X.Y.Z for release"
+     git push origin main
+     ```
+  4. Tag and trigger GitHub Actions release:
+     ```bash
+     git tag -a vX.Y.Z -m "Release vX.Y.Z"
+     git push origin vX.Y.Z
+     ```
+  5. The release workflow automatically verifies tests, packages all runtime assets (`data/`, `workflows/`, `tests/`) into `BatchPersona-vX.Y.Z.zip`, generates `SHA256SUMS.txt`, and publishes the GitHub Release via `gh release create`.
+
 ## Commit Scopes
 - `[core]` - Pipeline core library, client, and configuration models in `src/batchpersona/` (`client.py`, `models.py`, `template.py`)
 - `[orchestrator]` - Batch execution and interactive workflows in `src/batchpersona/orchestrator.py` and `src/batchpersona/pipeline.py`
