@@ -36,7 +36,7 @@ from batchpersona.orchestrator import BatchSwapper, configure_logging
 from batchpersona.packaging import build_release_package, compute_sha256, validate_package
 from batchpersona.template import WorkflowTemplate
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 __all__ = [
     "COLOR_BOLD",
