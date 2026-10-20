@@ -15,6 +15,9 @@
 - **Cross-Platform Subprocess Attributes**:
   - `subprocess.STARTUPINFO`, `subprocess.STARTF_USESHOWWINDOW`, `subprocess.CREATE_NEW_CONSOLE`, and `subprocess.DETACHED_PROCESS` do not exist in Linux/POSIX CPython builds.
   - When referencing or simulating Windows-specific process flags in cross-platform code or tests, always resolve them defensively via `getattr(subprocess, "...", None)` to avoid `AttributeError` on POSIX hosts.
+- **Static Analysis & Tooling Configuration Precedence**:
+  - `pyrightconfig.json` at repository root takes precedence over `[tool.pyright]` in `pyproject.toml`. To prevent shadow configuration drift, consolidate tooling configurations into a single authoritative source.
+  - Under strict type checking (`--project` strict), gaps predominantly surface from untyped third-party libraries (e.g. `websocket-client`) and dynamic JSON payloads. Type stubs and explicit domain typing should be introduced incrementally without relaxing quality checks globally.
 
 ## Local ComfyUI Instance Details
 - **Active Instance**: Comfy Desktop running headless API backend at `http://127.0.0.1:8000`.
@@ -53,6 +56,9 @@
   - When `--market-tag` is `"global"` or empty, output files preserve backward compatibility as `<campaign_stem>_<model_stem>.png`.
   - The market tag is sanitized to lowercase alphanumeric characters with hyphens and underscores (`clean_market_tag`).
 - **Attention Masking**: When applying `IPAdapterApply` for face/model identity swap on lookbook images, wire the inpainting mask into `attn_mask` to prevent identity bleeding into background and garments.
+- **Capability Verification & Pre-Flight Node Checks**:
+  - Querying ComfyUI `/object_info` retrieves currently registered custom nodes.
+  - If the endpoint is unreachable or returns an error, pre-flight checks must fail closed (raise an error or explicit warning) instead of silently treating missing nodes as verified.
 - **Memory Management**: Do NOT flush cache (`free_memory: True`) between successful batch iterations to preserve upstream node evaluation caching. Only call `free_memory(unload_models=True)` on failure/OOM, and in the `finally:` block when the entire batch concludes.
 - **Smart Housekeeping & Windows NTFS File-Locking**:
   - Purging intermediate ComfyUI input/output assets requires bounded micro-retries (3 attempts, 50 ms exponential backoff) due to transient Windows NTFS handle locking (`WinError 32` / `PermissionError`) by ComfyUI or the Windows Search indexer.

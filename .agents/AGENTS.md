@@ -27,6 +27,7 @@
   * Every claim in documentation, README files, or release notes—including performance benchmarks, hardware execution models, test counts, and compliance assertions—must be backed by reproducible scripts, benchmark harnesses, or automated test fixtures in the repository.
   * Speculative metrics, unbacked accuracy percentages (e.g. claiming benchmark figures without an in-repo evaluation dataset and evaluation script), and misleading technical branding are strictly prohibited.
   * Badges, type-checker modes, and linter levels advertised in documentation must strictly match active configuration files (`pyproject.toml`, CI workflows).
+  * Maintain volatile metrics (such as exact test counts or coverage percentages) at a single authoritative location (e.g. CI badges or command output references) rather than manually duplicating them across prose sections where they drift out of sync.
 * **Mandatory Negative & Boundary Testing**:
   * Test suites must never assert happy paths alone. Every newly introduced feature or hardened boundary must test explicit failure modes:
     * Negative security assertions (unauthorized requests return 401/403, missing or invalid tokens fail, path traversal is rejected).
@@ -148,7 +149,7 @@ Before any commit or push operation is executed (or when the user requests a com
 ## 8. Security, Data Privacy & Repository Hygiene
 * **Zero Secret & Privacy Leakage**: Never commit real credentials, access tokens, API keys, private certificates, or confidential data. All test cases must use synthetic, procedurally generated mock data.
 * **Fail-Closed Security Defaults & Untrusted Boundary**:
-  * All authentication, authorization, and validation controls must fail closed (deny by default if tokens, configs, or states are missing, corrupted, or unspecified) without testing backdoors or debug overrides in production handlers.
+  * All authentication, authorization, capability pre-flight checks, and validation controls must fail closed (deny by default if tokens, configs, node capabilities, or states are missing, corrupted, or unqueryable) without testing backdoors or debug overrides in production handlers. Pre-flight verification routines must explicitly fail or warn when inspection endpoints fail, rather than silently passing.
   * Localhost endpoints cannot be assumed trusted or single-user; multi-user environments (terminal servers, containers, shared hosts) expose local ports to all users on the host.
   * Confine and validate external or server-returned file paths against allowed root directory boundaries (e.g. using `path.resolve().is_relative_to(root)` before reading, writing, or unlinking files).
   * Never interpolate untrusted external inputs into shell command lines. Pass parameters strictly via environment variables, files, or structured argument vectors.
