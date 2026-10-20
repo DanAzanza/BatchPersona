@@ -354,3 +354,41 @@ def test_workflow_template_clip_text_encode_explicit_positive_with_negative_word
 
     assert patched["9"]["inputs"]["text"] == "Sharper details and vibrant colors"
     assert patched["10"]["inputs"]["text"] == "blurry, low quality"
+
+
+def test_qwen21_workflow_prompt_consistency() -> None:
+    """Verify Qwen 2.1 workflow prompt matches generator prompt and excludes bleeding triggers."""
+    from batchpersona.generator import DEFAULT_QWEN_EDIT_PROMPT, QWEN_EDIT_PROMPT
+
+    assert DEFAULT_QWEN_EDIT_PROMPT == QWEN_EDIT_PROMPT
+
+    workflow_path = Path("workflows/model_swap_qwen21_maskless_api.json")
+    workflow_data = json.loads(workflow_path.read_text(encoding="utf-8"))
+    qwen_prompt = workflow_data["6"]["inputs"]["prompt"]
+
+    assert qwen_prompt == DEFAULT_QWEN_EDIT_PROMPT
+    assert "body build" not in qwen_prompt.lower()
+    assert "do not transfer" not in qwen_prompt.lower()
+    assert "<image1>" in qwen_prompt
+    assert "<image2>" in qwen_prompt
+
+
+def test_generate_synthetic_environment(tmp_path: Path) -> None:
+    """Verify generate_synthetic_environment updates target workflow prompt."""
+    from batchpersona.generator import (
+        DEFAULT_QWEN_EDIT_PROMPT,
+        generate_synthetic_environment,
+    )
+
+    fake_wf = tmp_path / "model_swap_qwen21_maskless_api.json"
+    fake_wf.write_text(
+        json.dumps({"6": {"class_type": "TextEncodeQwenImage21", "inputs": {"prompt": "old"}}}),
+        encoding="utf-8",
+    )
+
+    generate_synthetic_environment(workflow_path=fake_wf)
+    updated = json.loads(fake_wf.read_text(encoding="utf-8"))
+    assert updated["6"]["inputs"]["prompt"] == DEFAULT_QWEN_EDIT_PROMPT
+
+    # Verify no-op on nonexistent path
+    generate_synthetic_environment(workflow_path=tmp_path / "missing.json")

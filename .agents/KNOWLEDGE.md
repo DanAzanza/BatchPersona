@@ -47,7 +47,7 @@
   - Qwen Image 2.1 uses rectified flow matching with Euler sampler and simple scheduler.
   - Native inference operates at `CFG = 1.0` with `negative_prompt = ""` (pure conditional velocity field evaluation, 25 steps = 25 passes).
   - Raising `CFG > 1.0` with detailed negative prompts triggers cross-attention crosstalk ("pink elephant" effect) where tokens from `<image2>` (e.g. casual tank tops, t-shirts) inadvertently contaminate the scene, stripping away campaign garments.
-  - Strict attribute isolation ("Only transfer the face, facial features, hair, skin tone, and identity of the model in <image2>") and explicit preservation ("Keep all clothing, garments, tailoring, shoes, accessories, pose, and studio background from <image1> completely unchanged. Do not transfer any clothing or footwear from <image2>") prevents footwear and outfit leakage from target models while ensuring seamless identity transfer.
+  - Strict attribute isolation ("Edit <image1>: Replace only the person's face, hair, and skin tone across all visible skin with the identity from <image2>. Keep the exact body pose, clothing, shoes, and background of <image1> unchanged.") avoids mentioning "body build" or negative sentences ("Do not transfer..."), preventing cross-attention bleeding and outfit/pose transfer from <image2>.
 - **Deterministic Output Naming**:
   - Output files are generated strictly as `<campaign_stem>_<clean_tag>_<model_stem>.png` when `--market-tag` is provided and non-global (case-insensitive).
   - When `--market-tag` is `"global"` or empty, output files preserve backward compatibility as `<campaign_stem>_<model_stem>.png`.
